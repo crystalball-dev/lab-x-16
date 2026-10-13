@@ -18,8 +18,9 @@ namespace lab::host::bus
     SharedBlock* mapSharedBlock() noexcept
     {
        #if defined (_WIN32)
-        // Mapped once per DLL and never unmapped: the view lives until the DLL unloads, and the kernel keeps the
-        // block while any DLL in the process still maps it.
+        // Mapped once per DLL and never unmapped. The handle stays open too: Windows removes a section's name when its
+        // last handle closes, even while views still map it, and the next DLL would then create a block of its own
+        // (found by Lx16BusHost: every module saw only itself).
         static SharedBlock* mapped = []() -> SharedBlock*
         {
             wchar_t name[96];
@@ -28,8 +29,8 @@ namespace lab::host::bus
             if (h == nullptr)
                 return nullptr;
             void* view = MapViewOfFile (h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof (SharedBlock));
-            // The handle may close: the view keeps the section alive.
-            CloseHandle (h);
+            if (view == nullptr)
+                CloseHandle (h);
             return static_cast<SharedBlock*> (view);
         }();
         return mapped;

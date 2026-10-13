@@ -104,3 +104,10 @@ lab_add_effect(NAME Stub SLUG stub PRODUCT "STUB" CODE L6St VERSION 0.0.1 CATEGO
 lab_add_effect(NAME StubZero SLUG stub_zero PRODUCT "STUB ZERO" CODE L6Sz VERSION 0.0.1 CATEGORIES Fx MIDI
                DEFINITIONS LABX16_STUB_LATENCY_MS=0
                SOURCES "${CMAKE_SOURCE_DIR}/plugins/_stub/Stub.cpp")
+
+# The cross-DLL Zone Bus check: hosts VST3 effects in one process and reads the shared block.
+juce_add_console_app(Lx16BusHost PRODUCT_NAME "Lx16BusHost")
+target_sources(Lx16BusHost PRIVATE "${CMAKE_SOURCE_DIR}/test/bus_host.cpp" "${CMAKE_SOURCE_DIR}/core/host/ZoneBusPlatform.cpp")
+target_compile_definitions(Lx16BusHost PRIVATE ${LABX16_DEFINITIONS} JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_VST=0)
+target_compile_options(Lx16BusHost PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+target_link_libraries(Lx16BusHost PRIVATE lab_core juce::juce_audio_processors juce::juce_audio_utils juce::juce_recommended_config_flags)

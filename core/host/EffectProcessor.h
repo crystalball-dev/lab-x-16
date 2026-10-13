@@ -688,8 +688,10 @@ namespace lab::host
         {
             auto buses = BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+            // Active by default (FL Studio 20.6 crashed reloading a project that routed a sidechain into a stub whose
+            // sidechain bus started inactive; see docs/DESIGN.md). Unrouted, the host feeds it silence.
             if (sidechain)
-                buses = buses.withInput ("Sidechain", juce::AudioChannelSet::stereo(), false);
+                buses = buses.withInput ("Sidechain", juce::AudioChannelSet::stereo(), true);
             return buses;
         }
 
