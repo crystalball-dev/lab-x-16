@@ -1,8 +1,8 @@
 # LAB X-16 — Effect specifications
 
-Twenty-three standalone FL Studio mixer effects in two factions. Written 2026-10-12 with the handoff
-(`LAB_X16_HANDOFF.md`, which holds the architecture, the core API, the Zone Bus, the theme engine, the FL checks
-and the milestones). This file is the per-effect contract: parameters, DSP, host I/O, presets and tests. Commit it
+Twenty-three standalone FL Studio mixer effects in two factions. Written 2026-10-12 with the plan (a private handoff
+that holds the architecture, the core API, the Zone Bus, the theme engine, the FL checks and the milestones; what the
+build changed is in `docs/DESIGN.md`). This file is the per-effect contract: parameters, DSP, host I/O, presets and tests. Commit it
 as `docs/EFFECTS.md` once the first wave builds; keep it current when a spec changes during execution, and record
 the reason in `docs/DESIGN.md`.
 
@@ -58,7 +58,7 @@ NOT ADJUSTED mode (looser look-ahead), code `L6Ph`.
 - **Randomness:** `hash01(bar, step, salt, callsign)`; never a free-running RNG for decisions. Noise generators
   may use the seeded xorshift `Rng` from `Common.h`.
 - **Macros:** one per effect, the faction's accent colour, with the mod wheel added when MIDI is present.
-- **Presets:** six to eight each, named from the lore, loudness-trimmed (handoff §9). Preset 0 is "Init".
+- **Presets:** six to eight each, named from the lore, loudness-trimmed (`output` set so the RMS on the reference signal stays within 1 dB of the input at the preset's mix). Preset 0 is "Init".
 - **Guard stages:** each spec names its stages in chain order; the base calls `guard(stage)` after each.
 - **Smoothing:** frequencies and times log-domain; levels linear; choices none.
 
