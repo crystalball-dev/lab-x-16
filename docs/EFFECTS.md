@@ -62,7 +62,7 @@ NOT ADJUSTED mode (looser look-ahead), code `L6Ph`.
 - **Guard stages:** each spec names its stages in chain order; the base calls `guard(stage)` after each.
 - **Smoothing:** frequencies and times log-domain; levels linear; choices none.
 
-### 0.3 Common tests (every effect, `Tests/run_tests.py --plugin <slug>`)
+### 0.3 Common tests (every effect, `test/run_tests.py --plugin <slug>`)
 
 | # | Test | Pass |
 |---|---|---|
@@ -137,7 +137,8 @@ keeps the low band stereo (X-10 always summed).
 **Tests**
 - T1 sub band: C1 note through the chain at 24 dB drive, band below SPLIT within 0.05 dB of dry (X-10 test 9).
 - T2 energy above the split rises with drive; crush produces the expected level steps.
-- T3 aliasing: folded 5 kHz sine, 4x at least 8 dB cleaner than Off above 10 kHz.
+- T3 aliasing: folded 5 kHz sine at 12 and 24 dB drive, 4x at least 8 dB cleaner than Off above 10 kHz (past
+  ~30 dB the fold's harmonics reach beyond 4x's own Nyquist).
 - T4 latency identical at Off, 2x and 4x (C2) and across `mode`.
 - T5 COOLANT period at 128 BPM, 1/4 pump: 468.75 ms (X-10 test 12).
 
@@ -227,7 +228,8 @@ Stages: `crush`, `output`.
 
 **Core modules:** `Crush`, `Geiger`, `Dust`, `Follower`, `SVF`, `Needle`.
 
-**New DSP:** click rate `r = dose² × 400 /s × env^track`, env normalised to 0-1 over -60..0 dBFS; each click is
+**New DSP:** click rate `r = dose² × 400 /s × ((1 - track) + track × env)`, env normalised to 0-1 over -60..0 dBFS
+(a blend rather than `env^track`, which is 0 in silence for any TRACK above 0 and would contradict T2); each click is
 noise with a 0.35 ms decay (X-3) through the band-pass; `stereo` Stereo uses an independent RNG per channel,
 Mono shares one. `medium`: Clean, Tape (6.5 kHz low-pass), Radio (3 kHz), Phone (300-3400 Hz band). The needle
 follows a 100 ms count of clicks; its jitter rises with the count.
@@ -279,7 +281,7 @@ Stages: `fdn`, `output`.
 **New DSP:** `modal` blends the mixing matrix between Hadamard (diffuse) and identity (each line its own
 resonance; the room "rings"); the matrix is renormalised so the spectral norm stays 1. `levels` 1-5 picks the
 base line lengths from five tables scaled from the Noosphere set (level 1 = 0.35x, level 5 = 1.0x of the small
-set), so stepping it is audible as a staircase, not a slider. `duck`: wet gain = 1 - duck × env (10 ms attack,
+set), so stepping it is audible as a staircase, not a slider. `duck`: wet gain = 1 - duck × env, env following the input's level on a -60..0 dB scale (10 ms attack,
 `duck_release` ms release), the claustrophobic pumping of a room that only speaks between hits.
 
 **Parameters**
@@ -911,7 +913,8 @@ path, and a DAMAGED fifth tap.
 ```
 in -> 2 delay lines (L, R, 4 s) -> taps 1..5 at tap times (pattern or own sync/ms), each: level, pan, one-pole tone
    -> tap 5 DAMAGED: detune walk ±12 ct (MicroShift), band-pass 300-3000 Hz, light crush, -6 dB, erratic level
-   -> feedback from FB SOURCE (tap 5 | sum) through TONE low-pass, 120 Hz high-pass, soft limit, into the lines
+   -> feedback from FB SOURCE (tap 5 before its level | sum of the taps after theirs, never more than one tap's
+      worth) through TONE low-pass, 120 Hz high-pass, soft limit, into the lines
    -> MOTION: Ensemble-style slow sweeps on every tap time (depth, rate), right side half a cycle later
    -> PING-PONG: feedback crosses sides -> equal-power mix
 ```

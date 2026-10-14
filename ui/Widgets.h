@@ -225,10 +225,11 @@ namespace lab::ui
             const auto& t = *theme;
             auto b = getLocalBounds().toFloat().reduced (4.0f);
             const auto textArea = b.removeFromBottom (14.0f);
-            const auto centre = juce::Point<float> (b.getCentreX(), b.getBottom() - 2.0f);
-            const float radius = std::min (b.getWidth() * 0.5f, b.getHeight()) - 4.0f;
-            const float a0 = -juce::MathConstants<float>::pi * 0.75f, a1 = juce::MathConstants<float>::pi * 0.75f;
-            const float span = (a1 - a0) * 0.5f;   // a half-circle face
+            // A 224-degree face whose lower ends stay above the readout line.
+            const float span = juce::MathConstants<float>::pi * 0.62f;
+            const float below = -std::cos (span);   // how far the arc ends dip under the centre, in radii
+            const float radius = std::max (8.0f, std::min (b.getWidth() * 0.5f - 2.0f, (b.getHeight() - 4.0f) / (1.0f + below)));
+            const auto centre = juce::Point<float> (b.getCentreX(), b.getBottom() - 2.0f - radius * below);
             const float from = -span, to = span;
 
             juce::Path arc, red;

@@ -111,3 +111,15 @@ target_sources(Lx16BusHost PRIVATE "${CMAKE_SOURCE_DIR}/test/bus_host.cpp" "${CM
 target_compile_definitions(Lx16BusHost PRIVATE ${LABX16_DEFINITIONS} JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_VST=0)
 target_compile_options(Lx16BusHost PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 target_link_libraries(Lx16BusHost PRIVATE lab_core juce::juce_audio_processors juce::juce_audio_utils juce::juce_recommended_config_flags)
+
+# Wave 1
+lab_add_effect(NAME Kaymanov SLUG kaymanov PRODUCT "KAYMANOV" CODE L6Ka VERSION 0.1.0 CATEGORIES Fx Distortion
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/kaymanov/Kaymanov.cpp")
+lab_add_effect(NAME Dosimeter SLUG dosimeter PRODUCT "DOSIMETER" CODE L6Do VERSION 0.1.0 CATEGORIES Fx Distortion
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/dosimeter/Dosimeter.cpp")
+lab_add_effect(NAME Silo SLUG silo PRODUCT "SILO" CODE L6Si VERSION 0.1.0 CATEGORIES Fx Reverb
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/silo/Silo.cpp")
+lab_add_effect(NAME Rainbow SLUG rainbow PRODUCT "RAINBOW" CODE L6Rb VERSION 0.1.0 CATEGORIES Fx Delay
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/rainbow/Rainbow.cpp")
+lab_add_effect(NAME WishGranter SLUG wish_granter PRODUCT "WISH GRANTER" CODE L6Wg VERSION 0.1.0 CATEGORIES Fx Reverb
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/wish_granter/WishGranter.cpp")

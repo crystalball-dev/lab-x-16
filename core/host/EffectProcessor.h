@@ -83,6 +83,11 @@ namespace lab::host
         bus::Client* bus = nullptr;     // null unless a bus client with BUS On and connected
         bool sidechainActive = false;   // the host enabled the sidechain bus
         int64_t sampleClock = 0;        // samples processed since prepareToPlay
+        // Set true to change something that must not be heard switching (oversampling, a mode with its own
+        // state): the base fades the effect to the dry signal over 30 ms, calls flush(), and fades back in.
+        bool* requestSwitch = nullptr;
+        // A macro that also raises MIX (WISH GRANTER's GRANT) writes how much here; the base adds it to the mix.
+        float* mixOffset = nullptr;
     };
 
     // Implemented per effect. `v` points at the effect's first own parameter (smoothed values for this block).
@@ -286,6 +291,10 @@ namespace lab::host
                 ctx.bus = busOn ? &busClient : nullptr;
                 ctx.sidechainActive = sideActive;
                 ctx.sampleClock = sampleClock;
+                bool switchWanted = false;
+                ctx.requestSwitch = &switchWanted;
+                float mixOffset = 0.0f;
+                ctx.mixOffset = &mixOffset;
 
                 while (midiIt != midiEnd && (*midiIt).samplePosition <= pos)
                 {
@@ -303,6 +312,11 @@ namespace lab::host
                 transport.ppq = transport.playing ? blockPpq + (double) pos * transport.ppqPerSample : 0.0;
                 updateControl (n);
                 chain->control (values.data() + commonCount, ctx, n);
+                if (switchWanted && switchState != SwitchState::fadingOut)
+                {
+                    switchState = SwitchState::fadingOut;
+                    switchFadeRemaining = (int) std::ceil (switchGain * (float) switchFadeLength);
+                }
 
                 // Input (non-finite host samples become silence: the input itself is never faulted).
                 std::array<float, controlBlock> dryL {}, dryR {}, wetL {}, wetR {}, sideL {}, sideR {};
@@ -333,8 +347,13 @@ namespace lab::host
                     wetR.fill (0.0f);
                     chain->reset();
                 }
+               #if LABX16_HARNESS
+                // The OUTPUT stage (after the chain's own): a non-finite sample, which the output check must catch.
+                if (injectStage == (int) info.stages.size() && injectAtSample >= sampleClock && injectAtSample < sampleClock + n)
+                    wetL[0] = std::numeric_limits<float>::quiet_NaN();
+               #endif
 
-                const float mixTarget = values[Common::mix];
+                const float mixTarget = std::clamp (values[Common::mix] + mixOffset, 0.0f, 1.0f);
                 const float gainTarget = dsp::dbToGain (values[Common::output]);
                 const float bypassTarget = rawValue (Common::bypass) > 0.5f ? 1.0f : 0.0f;
                 const float mixStep = (mixTarget - mixNow) / (float) n;
@@ -672,6 +691,13 @@ namespace lab::host
 
         //==============================================================================
        #if LABX16_HARNESS
+        // Tests pin the instance id so hash01 decisions and seeded noise repeat from render to render.
+        void setInstanceIdForTest (uint32_t id)
+        {
+            instanceId = id | 1u;
+            callsign = bus::defaultCallsign (instanceId);
+            busClient.setIdentity (instanceId, callsign);
+        }
         std::array<float, 16> stagePeak {};
         int64_t samplesRendered = 0;
         int injectStage = -1;          // test hook: a 1e9 sample appears after this stage...

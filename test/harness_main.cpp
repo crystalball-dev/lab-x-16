@@ -34,6 +34,8 @@ namespace
 {
     using lab::host::EffectProcessor;
 
+    uint32_t instanceIdBase = 0x16000001u;   // --id <hex>
+
     struct TestPlayHead final : public juce::AudioPlayHead
     {
         double bpm = 120.0, sampleRate = 48000.0;
@@ -331,11 +333,13 @@ namespace
     };
 
     // ------------------------------------------------------------------------------------------------------------
+    // The play head lives on the heap: an Instance is moved (returned, pushed into vectors), and the processor keeps a
+    // pointer to its play head, which must not move with it.
     struct Instance
     {
         std::unique_ptr<juce::AudioProcessor> proc;
         EffectProcessor* fx = nullptr;
-        TestPlayHead head;
+        std::unique_ptr<TestPlayHead> head = std::make_unique<TestPlayHead>();
     };
 
     Instance makeInstance (double sr, int, double bpm, bool playing)
@@ -343,10 +347,14 @@ namespace
         Instance in;
         in.proc.reset (createPluginFilter());
         in.fx = dynamic_cast<EffectProcessor*> (in.proc.get());
-        in.head.bpm = bpm;
-        in.head.sampleRate = sr;
-        in.head.playing = playing;
-        in.proc->setPlayHead (&in.head);
+        // A fixed id per instance (overridable with --id) so every render of a test repeats exactly.
+        static int made = 0;
+        if (in.fx != nullptr)
+            in.fx->setInstanceIdForTest (instanceIdBase + 2u * (uint32_t) made++);
+        in.head->bpm = bpm;
+        in.head->sampleRate = sr;
+        in.head->playing = playing;
+        in.proc->setPlayHead (in.head.get());
         return in;
     }
 
@@ -388,7 +396,7 @@ namespace
             for (int ch = 0; ch < 2; ++ch)
                 for (int i = 0; i < 512; ++i)
                     buf.setSample (ch, i, 0.3f * std::sin ((float) (k * 512 + i) * 0.031f));
-            a.head.position = k * 512;
+            a.head->position = k * 512;
             a.proc->processBlock (buf, midi);
         }
         juce::MemoryBlock state;
@@ -431,7 +439,10 @@ namespace
 
     // Random parameters, presets, transport jumps, block sizes and signals; silence stretches check that nothing
     // grows without input.
-    int runFuzz (double sr, double seconds, int seed, bool varyBlocks, int fixedBlock, bool growthCheck)
+    // Growth in silence, after 4 s of it: `min` flags a 100 ms window 6 dB above the quietest so far (tails must die);
+    // `peak` flags one 3 dB above the loudest of those first 4 s (for effects that sound on in silence by design: a
+    // delay's long echoes, DOSIMETER's clicks).
+    int runFuzz (double sr, double seconds, int seed, bool varyBlocks, int fixedBlock, bool growthCheck, bool peakGrowth)
     {
         auto in = makeInstance (sr, 4096, 120.0, true);
         prepare (in, sr, 4096, in.proc->getBusCount (true) > 1);
@@ -442,11 +453,12 @@ namespace
         juce::AudioBuffer<float> block (std::max (2, in.proc->getTotalNumInputChannels()), 4096);
         juce::MidiBuffer midi;
         Stats stats;
-        int presetChanges = 0, paramChanges = 0, jumps = 0, growth = 0;
+        int presetChanges = 0, paramChanges = 0, jumps = 0, growth = 0, latencyChanges = 0;
+        const int latency = in.proc->getLatencySamples();
         float worstGrowth = -1000.0f;
         const double cycle = 30.0, activeSpan = 20.0;
         double nextEvent = 0.0;
-        double windowSum = 0.0, minSoFar = 1000.0;
+        double windowSum = 0.0, minSoFar = 1000.0, earlyMax = -1000.0;
         int windowCount = 0, windowIndex = 0;
         bool inSilence = false;
         const int window = (int) (0.1 * sr);
@@ -463,6 +475,7 @@ namespace
                 windowSum = 0.0;
                 windowCount = windowIndex = 0;
                 minSoFar = 1000.0;
+                earlyMax = -1000.0;
             }
             else if (! silent)
                 inSilence = false;
@@ -485,8 +498,8 @@ namespace
                 }
                 else if (r < 0.75f)
                 {
-                    in.head.jumpAtSeconds = t0;
-                    in.head.jumpToQuarter = rng.nextFloat() * 64.0f;
+                    in.head->jumpAtSeconds = t0;
+                    in.head->jumpToQuarter = rng.nextFloat() * 64.0f;
                     ++jumps;
                 }
                 nextEvent += 0.05 + rng.nextDouble() * 0.5;
@@ -504,9 +517,11 @@ namespace
                     for (int i = 0; i < n; ++i)
                         block.setSample (ch, i, noise.getSample (ch % 2, (pos + i) % noise.getNumSamples()));
             }
-            in.head.position = pos;
+            in.head->position = pos;
             in.proc->processBlock (block, midi);
             stats.add (block, 0, n);
+            if (in.proc->getLatencySamples() != latency)
+                ++latencyChanges;
 
             if (inSilence && growthCheck)
             {
@@ -517,10 +532,13 @@ namespace
                     if (++windowCount >= window)
                     {
                         const float db = juce::Decibels::gainToDecibels ((float) std::sqrt (windowSum / windowCount), -240.0f);
-                        if (windowIndex >= 40 && db > -80.0f)   // after 4 s: tails have died
+                        if (windowIndex < 40)
+                            earlyMax = std::max (earlyMax, (double) db);
+                        else if (db > -80.0f)   // after 4 s: tails have died (min) or only fall (peak)
                         {
-                            worstGrowth = std::max (worstGrowth, (float) (db - minSoFar));
-                            if (db - minSoFar > 6.0)
+                            const double reference = peakGrowth ? earlyMax + 3.0 : minSoFar + 6.0;
+                            worstGrowth = std::max (worstGrowth, (float) (db - (peakGrowth ? earlyMax : minSoFar)));
+                            if (db > reference)
                                 ++growth;
                         }
                         minSoFar = std::min (minSoFar, (double) db);
@@ -535,12 +553,12 @@ namespace
         const double cpu = threadCpuSeconds() - cpu0;
         std::cout << "fuzz seed=" << seed << " seconds=" << seconds << " param_changes=" << paramChanges << " preset_changes=" << presetChanges
                   << " jumps=" << jumps << " non_finite=" << stats.nonFinite << " peak_db=" << juce::Decibels::gainToDecibels (stats.peak, -240.0f)
-                  << " growth_silence=" << growth << " worst_growth_db=" << worstGrowth
+                  << " growth_silence=" << growth << " worst_growth_db=" << worstGrowth << " latency_changes=" << latencyChanges
                   << " faults=" << (in.fx != nullptr ? in.fx->meters.faults.load() : 0)
                   << " faults_logged=" << (in.fx != nullptr ? in.fx->flushFaultLog() : 0)
                   << " realtime_x=" << (cpu > 0.0 ? seconds / cpu : 0.0) << std::endl;
         in.proc->releaseResources();
-        return stats.nonFinite == 0 && growth == 0 ? 0 : 1;
+        return stats.nonFinite == 0 && growth == 0 && latencyChanges == 0 ? 0 : 1;
     }
 }
 
@@ -551,6 +569,8 @@ int main (int argc, char* argv[])
     for (int i = 1; i < argc; ++i)
         args.add (juce::String::fromUTF8 (argv[i]));
 
+    if (args.contains ("--id"))
+        instanceIdBase = (uint32_t) option (args, "--id").getHexValue64() | 1u;
     const double sr = option (args, "--sr", "48000").getDoubleValue();
     const int blockSize = option (args, "--block", "512").getIntValue();
     const double seconds = option (args, "--seconds", "4").getDoubleValue();
@@ -564,7 +584,7 @@ int main (int argc, char* argv[])
         return runRoundtrip (sr);
     if (args.contains ("--fuzz"))
         return runFuzz (sr, seconds, option (args, "--seed", "1").getIntValue(), args.contains ("--vary-blocks"), blockSize,
-                        ! args.contains ("--no-growth-check"));
+                        ! args.contains ("--no-growth-check"), option (args, "--growth", "min") == "peak");
 
     const int instances = std::max (1, option (args, "--instances", "1").getIntValue());
     const bool nullCheck = args.contains ("--null-check");
@@ -635,6 +655,8 @@ int main (int argc, char* argv[])
         const bool ok = stream.openedOk() && png.writeImageToStream (image, stream);
         std::cout << "png=" << pngFile.getFullPathName() << " size=" << image.getWidth() << "x" << image.getHeight()
                   << " ok=" << (ok ? 1 : 0) << std::endl;
+        if (auto* e = dynamic_cast<lab::ui::EffectEditor*> (editor.get()))
+            std::cout << "panels=\"" << e->panelTitles().joinIntoString ("|") << "\"" << std::endl;
         editor.reset();
         if (! args.contains ("--out"))
             return ok ? 0 : 1;
@@ -719,7 +741,7 @@ int main (int argc, char* argv[])
             if (sideSpec.isNotEmpty())
                 for (int ch = 2; ch < channels; ++ch)
                     block.copyFrom (ch, 0, side, (ch - 2) % 2, pos, n);
-            in.head.position = pos;
+            in.head->position = pos;
             juce::MidiBuffer m (midi);
             in.proc->processBlock (block, m);
             for (int ch = 0; ch < 2; ++ch)
@@ -774,7 +796,8 @@ int main (int argc, char* argv[])
         std::cout << "latency_reported=" << latency << " latency_measured=" << (at >= 0 ? at - (int) (0.1 * sr) : -1) << std::endl;
     }
 
-    std::cout << "product=\"" << fx[0].proc->getName() << "\" latency=" << latency << " seconds=" << seconds
+    std::cout << "product=\"" << fx[0].proc->getName() << "\" latency=" << latency << " tail_s=" << fx[0].proc->getTailLengthSeconds()
+              << " seconds=" << seconds
               << " peak_db=" << juce::Decibels::gainToDecibels (stats.peak, -240.0f) << " rms_db=" << stats.rmsDb()
               << " max_jump=" << stats.maxJump << " non_finite=" << stats.nonFinite << " faults=" << first->meters.faults.load()
               << " faults_logged=" << first->flushFaultLog() << " realtime_x=" << (cpu > 0.0 ? seconds * instances / cpu : 0.0);

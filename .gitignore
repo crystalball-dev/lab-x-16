@@ -2,8 +2,7 @@
 build/
 build-*/
 out/
-Tests/out/
-Tests/fixtures/
+test/out/
 __pycache__/
 *.pyc
 

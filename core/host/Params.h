@@ -66,7 +66,8 @@ namespace lab::host
         if (unit == "ct")  return juce::String (juce::roundToInt (v)) + " ct";
         if (unit == "st")  return s.kind == Kind::real ? juce::String (v, 1) + " st"
                                                        : (v > 0.0f ? "+" : "") + juce::String (juce::roundToInt (v)) + " st";
-        if (unit == "x")   return juce::String (v, v < 10.0f ? 3 : 2) + "x";
+        if (unit == "x")   return juce::String (v, v < 10.0f ? 2 : 1) + "x";
+        if (unit == "bit") return juce::String (v, 1) + " bit";
         if (unit == "/s")  return juce::String (v, v < 10.0f ? 1 : 0) + "/s";
         if (unit == "oct") return (v > 0.0f ? "+" : "") + juce::String (juce::roundToInt (v));
         if (s.kind == Kind::real)

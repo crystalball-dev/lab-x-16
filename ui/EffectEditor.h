@@ -154,6 +154,18 @@ namespace lab::ui
 
         const Theme& getTheme() const noexcept { return *theme; }
 
+        // Every panel title, row by row then the side column (test C9 checks them against the spec).
+        juce::StringArray panelTitles() const
+        {
+            juce::StringArray titles;
+            for (const auto& row : rows)
+                for (const auto& p : row)
+                    titles.add (p.title);
+            for (const auto& p : side)
+                titles.add (p.title);
+            return titles;
+        }
+
         // Call once at the end of the derived constructor: adds the overlay and starts the frame timer.
         void finish()
         {
@@ -211,10 +223,12 @@ namespace lab::ui
             g.setColour (t.bright);
             g.drawText (processor.info.product, header.withTrimmedTop (13).withHeight (28), juce::Justification::topLeft);
             const int nameWidth = (int) std::ceil (juce::GlyphArrangement::getStringWidth (monoFont (24.0f, true), processor.info.product)) + 14;
+            // The subtitle stops short of the preset selector (long pairs such as WISH GRANTER squeeze to fit).
             g.setFont (monoFont (12.0f));
             g.setColour (t.phosphor);
-            g.drawText ("//  " + utf8 (processor.info.subtitle), header.withTrimmedTop (22).withTrimmedLeft (nameWidth).withHeight (16),
-                        juce::Justification::topLeft);
+            const auto subtitleArea = header.withTrimmedTop (22).withTrimmedLeft (nameWidth).withHeight (16)
+                                            .withRight (std::min (header.getRight(), prevButton.getX() - 8));
+            g.drawFittedText ("//  " + utf8 (processor.info.subtitle), subtitleArea, juce::Justification::topLeft, 1, 0.75f);
 
             for (const auto& row : rows)
                 for (const auto& panel : row)
@@ -239,7 +253,7 @@ namespace lab::ui
             const auto bounds = getLocalBounds();
             overlay.setBounds (bounds);
             auto header = bounds.withHeight (headerHeight).reduced (margin, 12);
-            auto presetArea = header.withSizeKeepingCentre (300, 26).translated (60, -2);
+            auto presetArea = header.withSizeKeepingCentre (300, 26).translated (84, -2);
             prevButton.setBounds (presetArea.removeFromLeft (26));
             nextButton.setBounds (presetArea.removeFromRight (26));
             presetBox.setBounds (presetArea.reduced (4, 0));
