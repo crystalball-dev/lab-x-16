@@ -61,3 +61,15 @@ process as FL does and reads the bus block: every module had created a block of 
 name when its last handle closes, even while views still map it, and `mapSharedBlock` closed its handle after mapping,
 so each DLL that came later created a new block. Each DLL now keeps its handle for its lifetime. With the fix, STUB +
 STUB ZERO register two fresh peers on one block, STUB + STUB + STUB ZERO three.
+
+### FL Studio checks, second pass (2026-10-13, fixed stubs)
+
+| # | Check | Result |
+|---|---|---|
+| F7 | In-process instances | **Pass.** STUB and STUB ZERO list each other; with STUB ZERO bridged, both show ALONE (expected: a bridged plugin runs in another process). |
+| F4 + reload | Sidechain, then save and reopen | **Pass.** No crash with the sidechain bus active by default. |
+| F5 | MIDI to a mixer effect | **Pass.** A MIDI Out channel's *Port* and the effect wrapper's *Settings > MIDI > Input port* set to the same number deliver notes. |
+| F6 | Smart disable vs tails | **Pass.** With *Allow smart disable* on and nothing routed in, TAIL's 4 s decay rings out fully. |
+| F8 | Command-line render | **Pass.** `FL64.exe /R /Ewav "<project>.flp"` writes `<project>.wav` next to the project (48 kHz float, the song's length) and exits, in about 9 s. |
+| F1 | Null through the effect | Covered: the harness shows the stub passes audio exactly (null 0.0) and F2 shows FL compensates its latency to the sample. |
+| F9 | 23 entries | Pending the effects. |

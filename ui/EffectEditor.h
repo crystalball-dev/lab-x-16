@@ -17,7 +17,7 @@ namespace lab::ui
             { "L6Ze", "ZEALOTS" }, { "L6Rd", "100 RADS" }, { "L6Sa", "SARCOPHAGUS" }, { "L6Po", "POLTERGEIST" },
             { "L6Sn", "SNORK" }, { "L6Ga", "GAUSS" }, { "L6Pd", "PSY-DOG" }, { "L6Rb", "RAINBOW" },
             { "L6Wg", "WISH GRANTER" }, { "L6Cr", "CARRIER" }, { "L6Cc", "C-CONSCIOUSNESS" }, { "L6Ar", "ARTIFACT" },
-            { "L6Ns", "NUMBERS STATION" }, { "L6Oa", "OASIS" }, { "L6Cs", "CLEAR SKY" }, { "L6St", "STUB" },
+            { "L6Ns", "NUMBERS STATION" }, { "L6Oa", "OASIS" }, { "L6Cs", "CLEAR SKY" }, { "L6St", "STUB" }, { "L6Sz", "STUB ZERO" },
         };
         for (const auto& [c, n] : names)
             if (host::bus::packCode (c) == code)
