@@ -6,7 +6,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $pluginval = (Get-Command pluginval -ErrorAction SilentlyContinue).Source
 if (-not $pluginval) { $pluginval = "F:\_DEV\tools\pluginval\pluginval.exe" }
 
-$names = if ($All) { Get-ChildItem "$root\build" -Directory -Filter "Lx16*_artefacts" | Where-Object { $_.Name -notmatch 'Render_artefacts$' } |
+$names = if ($All) { Get-ChildItem "$root\build" -Directory -Filter "Lx16*_artefacts" |
+                     Where-Object { $_.Name -notmatch 'Render_artefacts$' -and (Test-Path (Join-Path $_.FullName "Release\VST3")) } |
                      ForEach-Object { $_.Name -replace '^Lx16', '' -replace '_artefacts$', '' } } else { @($Plugin) }
 $failed = 0
 foreach ($name in $names) {

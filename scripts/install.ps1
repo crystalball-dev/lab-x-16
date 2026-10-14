@@ -13,7 +13,8 @@ if ($fl) {
     exit 1
 }
 
-$names = if ($All) { Get-ChildItem "$root\build" -Directory -Filter "Lx16*_artefacts" | Where-Object { $_.Name -notmatch 'Render_artefacts$' } |
+$names = if ($All) { Get-ChildItem "$root\build" -Directory -Filter "Lx16*_artefacts" |
+                     Where-Object { $_.Name -notmatch 'Render_artefacts$' -and (Test-Path (Join-Path $_.FullName "Release\VST3")) } |
                      ForEach-Object { $_.Name -replace '^Lx16', '' -replace '_artefacts$', '' } |
                      Where-Object { $IncludeStubs -or $_ -notmatch '^Stub' } } else { @($Plugin) }
 foreach ($name in $names) {
