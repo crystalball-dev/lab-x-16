@@ -167,6 +167,30 @@ namespace lab::dsp
         return 1.0f - std::exp (-twoPi * hz / sampleRate);
     }
 
+    // Self-generated sound (a buzzer, number pips, weather beds, a coil whine, Geiger clicks) plays while the song plays
+    // and fades out over 50 ms when it stops: FL keeps processing a mixer track with the transport stopped, so a
+    // generator would otherwise sound on forever. The first block takes the state directly (no fade at load).
+    struct PlayGate
+    {
+        void prepare (float sampleRate) noexcept { step = 1.0f / (0.05f * sampleRate); fresh = true; }
+        void set (bool playing) noexcept
+        {
+            target = playing ? 1.0f : 0.0f;
+            if (fresh)
+                gain = target;
+            fresh = false;
+        }
+        float next() noexcept
+        {
+            gain = target > gain ? std::min (target, gain + step) : std::max (target, gain - step);
+            return gain;
+        }
+        bool closed() const noexcept { return gain <= 0.0f && target <= 0.0f; }
+
+        float gain = 0.0f, target = 0.0f, step = 0.0004f;
+        bool fresh = true;
+    };
+
     // Constant-power pan for pan in [-1, 1]; both gains are 1 at the centre.
     inline void panGains (float pan, float& left, float& right) noexcept
     {

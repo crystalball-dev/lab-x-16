@@ -115,8 +115,9 @@ namespace
             return std::min (60.0, 0.3 * std::exp2 (6.0 * (double) v[decay]) * 1.5 + (double) v[predelay] * 0.001 + 1.0);
         }
 
-        void control (const float* v, const host::BlockContext&, int n) override
+        void control (const float* v, const host::BlockContext& ctx, int n) override
         {
+            playingNow = ctx.transport->playing;
             const bool absorbing = v[absorb] > 0.5f;
             const bool eraseNow = v[erase] > 0.5f;
             if (eraseNow && ! lastErase)
@@ -183,7 +184,7 @@ namespace
             // The learned harmony: what enters (and, with TRANSFER, a breath of noise in silence) through the combs, into
             // the network, where the learned pitches ring on.
             std::array<float, host::controlBlock> inject {};
-            const bool transferring = transferLevel > 0.0f && silent > silenceLimit;
+            const bool transferring = transferLevel > 0.0f && silent > silenceLimit && playingNow;
             for (int i = 0; i < n; ++i)
             {
                 float x = 0.5f * (l[i] + r[i]);
@@ -385,7 +386,7 @@ namespace
         float harmonyGain = 0.27f, transferLevel = 0.0f, spectralNorm = 1.0f;
         int activeCombs = 0;
         int64_t silent = 0, silenceLimit = 96000;
-        bool lastErase = false;
+        bool lastErase = false, playingNow = false;
     };
 
     class ConsciousnessProcessor final : public host::EffectProcessor

@@ -202,6 +202,7 @@ namespace
             }
             wet = v[wetLevel] * 3.0f;
             propertyNow = (int) std::lround (v[property]);
+            playingNow = ctx.transport->playing;
 
             // COMPASS: the wet leans toward the pattern's centroid around the ring.
             float centroid = 0.0f, mass = 1.0e-6f;
@@ -221,7 +222,7 @@ namespace
         {
             float pl = 1.0f, pr = 1.0f;
             dsp::panGains (compassPan, pl, pr);
-            const float crackleChance = propertyNow == battery ? peakV * 30.0f / sr : 0.0f;
+            const float crackleChance = propertyNow == battery && playingNow ? peakV * 30.0f / sr : 0.0f;   // no sparks on a stopped track
             for (int i = 0; i < n; ++i)
             {
                 float rl = 0.0f, rr = 0.0f;
@@ -391,6 +392,7 @@ namespace
         float sr = 48000.0f, envCoef = 0.001f, gainCoef = 0.001f, follower = 0.001f, ratiosKey = -1.0f, stepDebt = 0.0f, wet = 1.8f;
         float wetEnv = 0.0f, crackle = 0.0f, compassPan = 0.0f, peakV = 0.0f, floorEnv = 0.0f;
         int propertyNow = none;
+        bool playingNow = false;
         int64_t reseeds = 0, lastFireBar = std::numeric_limits<int64_t>::min();
         bool lastReseed = false;
     };

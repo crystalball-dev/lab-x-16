@@ -1,8 +1,10 @@
 // EMISSION // ВЫБРОС — seismology and civil-defence timing: the sirens give a lead, the P-wave arrives, then the S-wave,
 // then the aftermath. Emissions, sirens and radio warnings, shelters, and the Anabiotics that let a stalker sleep through
 // one. One instance with ROLE Siren schedules an emission on FL's bar grid and posts it on the Zone Bus; every instance
-// (the siren included) plays the same phases from its own song position, scaled by SEVERITY and by 1 - SHELTER. The
-// phases are functions of the bar position, so a host loop or a render replays them exactly.
+// (the siren included) plays the same phases from its own song position, scaled by SEVERITY and by 1 - SHELTER. A
+// listener that has never heard a siren runs its own schedule (and sounds the siren itself), so one EMISSION on a track
+// works alone. By default it fires at bar 3 with a two-bar warning, so a pattern loop of four bars or more replays the
+// blowout on every pass. The phases are functions of the bar position, so a host loop or a render replays them exactly.
 
 #include "core/host/EffectProcessor.h"
 #include "core/dsp/Crush.h"
@@ -41,8 +43,8 @@ namespace
             e.busClient = true;
             e.params = {
                 { "role",           "Role",        Kind::choice,  0.0f, 1.0f,   0.0f, 0.0f, Smooth::none,   "",   "Listener|Siren" },
-                { "arm",            "Arm",         Kind::choice,  0.0f, 2.0f,   0.0f, 0.0f, Smooth::none,   "",   "Off|Countdown|At Bar" },
-                { "countdown",      "Countdown",   Kind::integer, 1.0f, 64.0f,  8.0f, 0.0f, Smooth::none,   "",   "" },
+                { "arm",            "Arm",         Kind::choice,  0.0f, 2.0f,   2.0f, 0.0f, Smooth::none,   "",   "Off|Countdown|At Bar" },
+                { "countdown",      "Countdown",   Kind::integer, 1.0f, 64.0f,  3.0f, 0.0f, Smooth::none,   "",   "" },
                 { "lead",           "Siren Lead",  Kind::integer, 1.0f, 8.0f,   2.0f, 0.0f, Smooth::none,   "",   "" },
                 { "repeat",         "Repeat",      Kind::choice,  0.0f, 5.0f,   0.0f, 0.0f, Smooth::none,   "",   "Off|8|16|32|64|128" },
                 { "severity",       "Severity",    Kind::real,    0.0f, 1.0f,   0.7f, 0.0f, Smooth::linear, "%",  "" },
@@ -56,7 +58,7 @@ namespace
             e.presets = {
                 { "Init", {} },
                 { "Standard Blowout", { { "severity", 0.7f } } },
-                { "Shelter in Bunker", { { "shelter", 0.9f } } },
+                { "Shelter in Bunker", { { "shelter", 0.6f } } },
                 { "Open Field", { { "shelter", 0.0f }, { "severity", 1.0f } } },
                 { "Periodic Sixteen", { { "repeat", 2.0f }, { "severity", 0.6f } } },
                 { "Anabiotics", { { "anabiotics", 1.0f } } },
@@ -144,15 +146,19 @@ namespace
             const auto& t = *ctx.transport;
             transport = t;
             depth = v[severity] * (1.0f - v[shelter]);
-            sirenOn = (int) std::lround (v[role]) == siren;
+            const bool sirenRole = (int) std::lround (v[role]) == siren;
             sirenGain = v[sirenLevel] * (1.0f - v[shelter]);
             anabioticsOn = v[anabiotics] > 0.5f;
             const int armMode = (int) std::lround (v[arm]);
 
-            if (sirenOn)
+            // A listener follows a siren once one has posted; until then (alone on the bus, or no bus) it is its own.
+            Schedule heard;
+            const bool sirenHeard = ! sirenRole && ctx.bus != nullptr && ctx.bus->readSchedule (heard) && heard.seq != 0;
+            sirenOn = ! sirenHeard;
+
             {
-                // The siren's own schedule: At Bar fires at bar COUNTDOWN of the song (bar 1 = the first); Countdown fires
-                // COUNTDOWN bars after the bar in which ARM switched on (an automation clip makes that repeatable).
+                // This instance's own schedule: At Bar fires at bar COUNTDOWN of the song (bar 1 = the first); Countdown
+                // fires COUNTDOWN bars after the bar in which ARM switched on (an automation clip makes that repeatable).
                 Schedule s = own;
                 s.leadBars = (int32_t) std::lround (v[lead]);
                 s.severity = v[severity];
@@ -177,29 +183,21 @@ namespace
                 {
                     s.seq = own.seq + 1;
                     own = s;
-                    if (ctx.bus != nullptr)
+                    if (sirenRole && ctx.bus != nullptr)
                         ctx.bus->postSchedule (own);
                 }
-                else if (ctx.bus != nullptr && ++repost >= 1024)
+                else if (sirenRole && ctx.bus != nullptr && ++repost >= 1024)
                 {
                     repost = 0;   // now and then, for instances that joined late
                     ctx.bus->postSchedule (own);
                 }
-                active = own;
             }
-            else if (ctx.bus != nullptr)
-            {
-                Schedule s;
-                if (ctx.bus->readSchedule (s))
-                    active = s;
-            }
-            else
-                active = {};
-            lastArm = sirenOn ? armMode : armOff;
+            active = sirenHeard ? heard : own;
+            lastArm = armMode;
 
             // The siren tells the bus whenever a fire point is crossed (ARTIFACT reseeds from the schedule itself).
             const auto here = locate (active, t.ppq, t);
-            if (sirenOn && t.playing && here.fireBar >= 0 && here.rel >= 0.0 && here.fireBar != lastFired && ctx.bus != nullptr)
+            if (sirenRole && t.playing && here.fireBar >= 0 && here.rel >= 0.0 && here.fireBar != lastFired && ctx.bus != nullptr)
             {
                 lastFired = here.fireBar;
                 ctx.bus->bumpReseed();
@@ -208,7 +206,7 @@ namespace
             relNow = here.rel;
             fireBarNow = here.fireBar;
             if (ctx.bus != nullptr)
-                ctx.bus->publish (sirenOn ? siren : listener, (int32_t) phaseNow, 0.0f);
+                ctx.bus->publish (sirenRole ? siren : listener, (int32_t) phaseNow, 0.0f);
         }
 
         void process (float* l, float* r, const float*, const float*, int n, host::Guard& guard) override

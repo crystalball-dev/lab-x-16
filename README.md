@@ -12,7 +12,8 @@ beyond the Red Forest the Radar carries the Rainbow signal. **The Deep Zone** de
 LAB X-16 is a fan project. It is not affiliated with or endorsed by GSC Game World. Every sound in the effects line is
 synthesized; this repository contains no game audio and no samples.
 
-**Status:** all twenty-three effects are built and tested (version 0.1.0 each). See `docs/EFFECTS.md` for every
+**Status:** all twenty-three effects are built, tested and through a first listening round in FL (versions 0.1.0 and
+0.1.1). See `docs/EFFECTS.md` for every
 effect's contract, `docs/DESIGN.md` for what the build changed and the test results, and `docs/ui` for a picture of
 every editor.
 
@@ -63,7 +64,11 @@ input), and a fault guard that silences and logs a runaway stage instead of lett
   look-ahead). FL compensates them.
 - **The Zone Bus.** Instances in one FL process see each other (the PEERS panel): EMISSION's siren schedules every
   instance's blowout, CONTAGION spreads between tracks, ARTIFACT reseeds on an emission, CLEAR SKY shares one sky. A
-  bridged plugin runs in another process and shows ALONE; EMISSION and CONTAGION then run their own timeline.
+  bridged plugin runs in another process and shows ALONE. Alone, both work by themselves: EMISSION fires at bar 3 by
+  default (a pattern loop of four bars or more replays the blowout every pass), and CONTAGION catches it from the
+  track's own level and runs its course through loops.
+- **Transport.** Sound an effect makes on its own (NUMBERS STATION's pips and buzzer, CLEAR SKY's weather, GAUSS's
+  coil whine, DOSIMETER's clicks) plays while the song plays and stops with it.
 - **MIDI** reaches a mixer effect through a MIDI Out channel whose *Port* matches the wrapper's *Settings > MIDI >
   Input port* (PSY-FIELD, ANOMALY and CARRIER take notes).
 - **Sidechain**: route a track to the effect's track with "Sidechain to this track" and pick the input in the
@@ -82,6 +87,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -All
 
 Tests (Python 3 with numpy, scipy and soundfile): the common checks C1-C9, each effect's own tests and the preset
 loudness check, through each effect's render harness. Reports land in `build/test-report-<slug>.json`.
+`test/audibility.py <slug>` measures how much each preset changes drums, a pad and a bass line.
 
 ```
 python -I test/run_tests.py --all

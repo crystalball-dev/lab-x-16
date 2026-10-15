@@ -1,8 +1,11 @@
 // CLEAR SKY // ЧИСТОЕ НЕБО — meteorology as a slow modulation system: fronts, precipitation, wind, lightning and the
 // day. The Zone's weather and the Clear Sky faction's name. WEATHER Auto walks a Markov chain of fronts every FRONT RATE
 // bars; its rolls are hashes of the front's index alone, so every CLEAR SKY in a project sees the same sky, and a render
-// repeats it. FOG darkens, RAIN falls as drops and hiss, WIND pans and swirls, LIGHTNING flashes the highs and its RUMBLE
-// arrives distance / 343 m/s later, NIGHT dims the top octaves, and an EMISSION SKY hums at 50 Hz under a distant siren.
+// repeats it. FOG darkens, RAIN falls as drops and hiss, WIND pans and swirls, LIGHTNING strikes (in any weather, most in
+// a storm) with a crack and a flash of the highs, and its RUMBLE rolls in distance / 343 m/s later; NIGHT dims the top
+// octaves, and an EMISSION SKY hums at 50 Hz under a distant siren. The weather's own sounds sit at a level that follows
+// the track's recent peak (never under -30 dBFS), and they play while the song plays: FL keeps processing a stopped
+// track, and rain would otherwise fall on it forever.
 
 #include "core/host/EffectProcessor.h"
 #include "core/dsp/Ensemble.h"
@@ -42,26 +45,26 @@ namespace
             e.faction = host::Faction::etherealSignal;
             e.params = {
                 { "weather",     "Weather",        Kind::choice, 0.0f, 5.0f,  0.0f,  0.0f,  Smooth::none,   "",   "Auto|Clear|Overcast|Rain|Storm|Emission Sky" },
-                { "front_rate",  "Front Rate",     Kind::choice, 0.0f, 7.0f,  4.0f,  0.0f,  Smooth::none,   "",   "1 bar|2 bars|4 bars|8 bars|16 bars|32 bars|64 bars|128 bars" },
+                { "front_rate",  "Front Rate",     Kind::choice, 0.0f, 7.0f,  3.0f,  0.0f,  Smooth::none,   "",   "1 bar|2 bars|4 bars|8 bars|16 bars|32 bars|64 bars|128 bars" },
                 { "day_length",  "Day Length",     Kind::real,   1.0f, 60.0f, 24.0f, 15.0f, Smooth::none,   "min", "" },
                 { "time_of_day", "Time of Day",    Kind::real,   0.0f, 24.0f, 12.0f, 0.0f,  Smooth::none,   "h",   "" },
                 { "fog",         "Fog",            Kind::real,   0.0f, 1.0f,  0.5f,  0.0f,  Smooth::linear, "%",  "" },
-                { "rain",        "Rain",           Kind::real,   0.0f, 1.0f,  0.3f,  0.0f,  Smooth::linear, "%",  "" },
+                { "rain",        "Rain",           Kind::real,   0.0f, 1.0f,  0.5f,  0.0f,  Smooth::linear, "%",  "" },
                 { "wind",        "Wind",           Kind::real,   0.0f, 1.0f,  0.3f,  0.0f,  Smooth::linear, "%",  "" },
-                { "lightning",   "Lightning",      Kind::real,   0.0f, 1.0f,  0.5f,  0.0f,  Smooth::linear, "%",  "" },
-                { "rumble",      "Rumble",         Kind::real,   0.0f, 1.0f,  0.5f,  0.0f,  Smooth::linear, "%",  "" },
-                { "distance",    "Storm Distance", Kind::real,   0.5f, 10.0f, 3.0f,  3.0f,  Smooth::none,   "km",  "" },
+                { "lightning",   "Lightning",      Kind::real,   0.0f, 1.0f,  0.6f,  0.0f,  Smooth::linear, "%",  "" },
+                { "rumble",      "Rumble",         Kind::real,   0.0f, 1.0f,  0.6f,  0.0f,  Smooth::linear, "%",  "" },
+                { "distance",    "Storm Distance", Kind::real,   0.5f, 10.0f, 1.2f,  3.0f,  Smooth::none,   "km",  "" },
                 { "front",       "Front",          Kind::real,   0.0f, 1.0f,  0.0f,  0.0f,  Smooth::linear, "%",  "" },
             };
             e.stages = { "sky" };
             e.presets = {
                 { "Init", {} },
-                { "Morning Clear", { { "weather", 1.0f }, { "time_of_day", 7.0f } } },
-                { "Overcast Swamp", { { "weather", 2.0f }, { "fog", 0.7f } } },
-                { "Rain at Yantar", { { "weather", 3.0f }, { "rain", 0.7f } } },
-                { "Storm Front", { { "weather", 4.0f }, { "lightning", 0.8f }, { "rain", 0.8f }, { "distance", 1.5f } } },
-                { "Night Watch", { { "weather", 2.0f }, { "time_of_day", 0.0f }, { "day_length", 60.0f } } },
-                { "Emission Sky", { { "weather", 5.0f }, { "wind", 0.6f } } },
+                { "Morning Clear", { { "weather", 1.0f }, { "time_of_day", 7.0f }, { "wind", 0.7f }, { "fog", 0.25f }, { "lightning", 0.2f }, { "output", 0.6f } } },
+                { "Overcast Swamp", { { "weather", 2.0f }, { "fog", 0.7f }, { "output", 0.7f } } },
+                { "Rain at Yantar", { { "weather", 3.0f }, { "rain", 0.7f }, { "output", 0.4f } } },
+                { "Storm Front", { { "weather", 4.0f }, { "lightning", 0.8f }, { "rain", 0.8f }, { "distance", 1.5f }, { "output", 0.4f } } },
+                { "Night Watch", { { "weather", 2.0f }, { "time_of_day", 0.0f }, { "day_length", 60.0f }, { "output", 0.8f } } },
+                { "Emission Sky", { { "weather", 5.0f }, { "wind", 0.6f }, { "output", 0.4f } } },
             };
             return e;
         }();
@@ -75,12 +78,15 @@ namespace
         {
             sr = (float) sampleRate;
             ensemble.prepare (sr);
-            glide = dsp::onePoleCoef (4.0f, sr);
+            glide = dsp::onePoleCoef (1.5f, sr);
+            progRelease = std::exp (-1.0f / (2.0f * sr));
+            crackDecay = std::exp (-1.0f / (0.02f * sr));
+            playing.prepare (sr);
             dropDecay = std::exp (-1.0f / (0.0006f * sr));
             for (auto& d : drops) d.band.setHz (3000.0f, 3.0f, sr);
             hissHp.setHz (2000.0f, 0.7071f, sr);
             whooshHp.setHz (300.0f, 0.7071f, sr);
-            rumbleLp.setHz (120.0f, false, sr);
+            rumbleLp.setHz (180.0f, false, sr);
             crackHp.setHz (2000.0f, 0.7071f, sr);
             sirenGen.prepare (sr, 0xC1E5u);
             rng.seed (0x5C1Eu);
@@ -100,7 +106,8 @@ namespace
             crackHp.reset();
             sirenGen.reset();
             panPhase = humPhase = 0.0f;
-            flashLeft = crackLeft = 0;
+            flashLeft = 0;
+            crackEnv = brown = progPeak = 0.0f;
             rumblePending.fill (-1);
             rumbleVoices.fill (-1);
             nextRumble = std::numeric_limits<int64_t>::max();
@@ -131,9 +138,12 @@ namespace
             fogNow = current[0] * v[fog];
             rainNow = current[1] * v[rain];
             windNow = current[2] * v[wind];
-            stormNow = std::clamp (current[3] + 0.5f * v[front] * current[1], 0.0f, 1.0f) * v[lightning];
+            stormNow = std::clamp (current[3] + 0.5f * v[front] * current[1], 0.0f, 1.0f);
+            strikeRate = v[lightning] * (0.25f + 0.75f * stormNow);   // strikes a second: heat lightning in any sky
+            closeness = 1.0f / (1.0f + 0.5f * v[distance]);
             emissionNow = current[4];
-            rumbleGain = v[rumble];
+            rumbleGain = v[rumble] / (1.0f + 0.25f * v[distance]);
+            playing.set (t.playing);
 
             // The day: TIME OF DAY plus the song's time over DAY LENGTH minutes while it plays.
             hours = v[timeOfDay] + (t.playing ? (float) (quarters * secPerQ / (v[dayLength] * 60.0) * 24.0) : 0.0f);
@@ -150,12 +160,12 @@ namespace
                 s.set (dsp::Biquad::highShelf, 4000.0f, 0.7071f, topDb, sr);
             nightActive = std::abs (topDb) > 0.01f;
 
-            // LIGHTNING: a hash01 roll per block at storm x 0.2 flashes a second; its RUMBLE follows distance / 343 m/s.
+            // LIGHTNING: a hash01 roll per block at the strike rate; its RUMBLE follows distance / 343 m/s.
             const float dt = (float) n / sr;
-            if (stormNow > 0.0f && dsp::hash01 (ctx.sampleClock / 16, 0, 0xF1A5u, 0) < stormNow * 0.2f * dt)
+            if (strikeRate > 0.0f && t.playing && dsp::hash01 (ctx.sampleClock / 16, 0, 0xF1A5u, 0) < strikeRate * dt)
             {
-                flashLeft = (int) (0.08f * sr);
-                crackLeft = (int) (0.03f * sr);
+                flashLeft = (int) (0.12f * sr);
+                crackEnv = closeness * v[lightning];
                 lastFlash = ctx.sampleClock;
                 if (firstFlash < 0)
                     firstFlash = ctx.sampleClock;
@@ -170,7 +180,7 @@ namespace
                 ++flashes;
             }
             for (auto& s : flashShelf)
-                s.set (dsp::Biquad::highShelf, 6000.0f, 0.7071f, 6.0f, sr);
+                s.set (dsp::Biquad::highShelf, 5000.0f, 0.7071f, 6.0f, sr);
         }
 
         void process (float* l, float* r, const float*, const float*, int n, host::Guard& guard) override
@@ -205,10 +215,14 @@ namespace
                     panPhase = dsp::wrap01 (panPhase + panInc);
                     float pl, pr;
                     dsp::panGains (dsp::sin2pi (panPhase) * windNow * 0.6f, pl, pr);
-                    a *= pl;
-                    b *= pr;
+                    const float balance = 1.0f / std::max (pl, pr);   // a sway, not a boost: the near side stays at unity
+                    a *= pl * balance;
+                    b *= pr * balance;
                 }
-                // The beds: drops and hiss, the whoosh, the crack, the rumble, the hum and the siren.
+                // The beds: drops and hiss, the whoosh, the crack, the rumble, the hum and the siren, at levels that follow
+                // the track's recent peak (instant attack, 2 s release; -30 dBFS at least).
+                progPeak = std::max (std::max (std::abs (l[i]), std::abs (r[i])), progPeak * progRelease);
+                const float ref = std::max (progPeak, 0.03f);
                 float bed = 0.0f;
                 if (rng.uni() < dropChance)
                 {
@@ -220,46 +234,51 @@ namespace
                 for (auto& d : drops)
                     if (d.env > 1.0e-4f)
                     {
-                        bed += d.band.bandpass (rng.bi() * d.env) * 0.15f;
+                        bed += d.band.bandpass (rng.bi() * d.env) * 1.5f * ref;
                         d.env *= dropDecay;
                     }
                 const float white = rng.bi();
-                bed += hissHp.highpass (white) * rainNow * 0.01f;
+                bed += hissHp.highpass (white) * rainNow * 0.12f * ref;
                 if (windNow > 1.0e-4f)
                 {
                     gust += (rng.bi() - gust) * 0.0002f;
-                    bed += whooshHp.highpass (rng.bi()) * windNow * 0.02f * (0.5f + std::abs (gust) * 20.0f);
+                    bed += whooshHp.highpass (rng.bi()) * windNow * 0.25f * ref * (0.5f + std::abs (gust) * 20.0f);
                 }
-                if (crackLeft > 0)
+                if (crackEnv > 1.0e-4f)
                 {
-                    --crackLeft;
-                    bed += crackHp.highpass (white) * 0.2f * stormNow;
+                    bed += crackHp.highpass (white) * crackEnv * 0.45f * ref;
+                    crackEnv *= crackDecay;
                 }
                 if (clockNow + i >= nextRumble)
                     startRumbles (clockNow + i);
                 if (rumbling)
                 {
-                    // Up to four rumbles overlap; each swells over 200 ms and dies away over 3 s.
+                    // Up to four rumbles overlap; each swells over 150 ms, rolls, and dies away over about 3 s.
                     float env = 0.0f;
                     rumbling = false;
                     for (auto& age : rumbleVoices)
                         if (age >= 0)
                         {
                             const float t = (float) age++ / sr;
-                            env += std::min (1.0f, t / 0.2f) * std::exp (-t / 0.8f);
-                            if (t > 3.0f)
+                            const float roll = dsp::sin2pi (0.85f * t);
+                            env += std::min (1.0f, t / 0.15f) * std::exp (-t / 1.1f) * (0.45f + 0.55f * roll * roll);
+                            if (t > 4.0f)
                                 age = -1;
                             else
                                 rumbling = true;
                         }
-                    bed += rumbleLp.process (rng.bi()) * std::min (env, 1.2f) * rumbleGain * 0.6f;
+                    brown = 0.998f * brown + 0.02f * rng.bi();   // brown noise: the low, heavy roll of thunder
+                    bed += rumbleLp.process (brown) * std::min (env, 1.5f) * rumbleGain * 1.6f * ref;
                 }
                 if (emissionNow > 1.0e-3f)
                 {
                     humPhase = dsp::wrap01 (humPhase + 50.0f / sr);
-                    bed += (dsp::sin2pi (humPhase) + 0.4f * dsp::sin2pi (2.0f * humPhase) + 0.2f * dsp::sin2pi (3.0f * humPhase)) * emissionNow * 0.02f;
-                    bed += sirenGen.next (0.5f) * emissionNow * 0.03f;
+                    bed += (dsp::sin2pi (humPhase) + 0.4f * dsp::sin2pi (2.0f * humPhase) + 0.2f * dsp::sin2pi (3.0f * humPhase)) * emissionNow * 0.12f * ref;
+                    bed += sirenGen.next (0.5f) * emissionNow * 0.15f * ref;
                 }
+                // All the weather together never towers over the track: soft-limited at 0.9 of its recent peak.
+                const float ceiling = 0.9f * ref;
+                bed = ceiling * dsp::fastTanh (bed / ceiling) * playing.next();
                 l[i] = a + bed;
                 r[i] = b + bed;
             }
@@ -289,7 +308,7 @@ namespace
             if (k < walkedTo || std::abs (lean - walkedLean) > 1.0e-3f)
             {
                 walkedTo = 0;
-                walkedSky = clear;
+                walkedSky = rainy;   // the first front brings rain
                 walkedLean = lean;
             }
             while (walkedTo < k)
@@ -325,7 +344,9 @@ namespace
         float sr = 48000.0f, glide = 0.0001f, dropDecay = 0.9f, fogNow = 0.0f, rainNow = 0.0f, windNow = 0.0f, stormNow = 0.0f, emissionNow = 0.0f;
         float rumbleGain = 0.5f, hours = 12.0f, night = 0.0f, fogBlend = 0.0f, panPhase = 0.0f, humPhase = 0.0f, gust = 0.0f, walkedLean = 0.0f;
         bool nightActive = false, rumbling = false;
-        int skyNow = clear, walkedSky = clear, flashLeft = 0, crackLeft = 0;
+        float strikeRate = 0.0f, closeness = 0.5f, crackEnv = 0.0f, crackDecay = 0.999f, brown = 0.0f, progPeak = 0.0f, progRelease = 0.99999f;
+        dsp::PlayGate playing;
+        int skyNow = clear, walkedSky = rainy, flashLeft = 0;
         size_t nextDrop = 0;
         int64_t clockNow = 0, lastFlash = -1, lastRumble = -1, firstFlash = -1, firstRumble = -1, flashes = 0, dropCount = 0, walkedTo = 0;
         std::array<int64_t, 16> rumblePending = idle<16>();   // each flash's thunder arrival (sample clock), -1 = free

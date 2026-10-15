@@ -332,6 +332,13 @@ def gauss_tests(h, record, want):
                {"second_db": round(second, 2)})
 
 
+    if want("T5"):
+        # FL keeps processing a mixer track with the transport stopped: nothing self-generated may sound then.
+        wav, _ = h.render("t5_stopped", ["--signal", "silence", "--seconds", "4", "--stopped"] + sets("whine=1"))
+        m, _, _ = mono_of(wav)
+        record("T5", "transport stopped: no coil whine", an.peak_db(m) < -120, {"peak_db": round(an.peak_db(m), 1)})
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 def psy_dog_tests(h, record, want):
     scene = fixture("dog_tone_hit", SR, 4.0, [(0.0, 4.0, "sine", 440, -12.0), (2.0, 2.02, "noise", 0, 0.0)])
@@ -371,8 +378,8 @@ def psy_dog_tests(h, record, want):
             if duck >= 10 ** (-1 / 20):
                 t_back = end_s - 2.0
                 break
-        expected = 0.06 + 0.4   # the 60 ms hold, then BLOOM (the thump's own attack adds a little)
-        record("T3", "BLOOM: the pack back within 1 dB of its sustained level 60 ms + 400 ms after the hit (+-20 %)",
+        expected = 0.025 + 0.4   # the 25 ms hold, then BLOOM (the thump's own attack adds a little)
+        record("T3", "BLOOM: the pack back within 1 dB of its sustained level 25 ms + 400 ms after the hit (+-20 %)",
                abs(t_back - expected) <= 0.2 * expected, {"returned_after_s": round(t_back, 3), "expected_s": expected,
                                                           "lowest_duck_before_return": round(lowest, 4)})
 
@@ -423,9 +430,18 @@ def emission_tests(h, record, want):
         record("T5", "a siren alone runs its own schedule (P-wave at 16.000 s)", abs(found - fire) <= 1, {"offset_samples": found - fire})
 
 
+    if want("T6"):
+        # One EMISSION alone with its defaults (a listener that has heard no siren): its own schedule fires at bar 3.
+        wav, _ = h.render("t6_alone", tone + ["--seconds", "5"] + sets("siren_level=0"))
+        m, _, sr = mono_of(wav)
+        found = first_break(m, 440.3, sr, int(4.0 * sr) - 400)
+        record("T6", "alone with its defaults, EMISSION fires at bar 3 (4.000 s at 120 BPM) to the sample",
+               abs(found - int(4.0 * sr)) <= 1, {"offset_samples": found - int(4.0 * sr)})
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 def contagion_tests(h, record, want):
-    common = ["--signal", "drums:120", "--bpm", "120", "--instances", "8"]
+    common = ["--signal", "drums:120", "--bpm", "120", "--instances", "8"] + sets("field_source=0")
     if want("T1"):
         _, st = h.render("t1_r0_zero", common + ["--seconds", "128"] + sets("0:role=1", "r0=0"))
         infected = [int(float(st.get(f"instance_{k}_custom3", "-1"))) for k in range(1, 8)]
@@ -448,10 +464,19 @@ def contagion_tests(h, record, want):
                {"bits": round(bits, 2), "max_cents": round(worst, 1)})
     if want("T5"):
         _, st = h.render("t5_solo", ["--signal", "drums:120", "--bpm", "120", "--seconds", "24"]
-                         + sets("role=1", "incubation=1", "recovery=4", "wane=4"))
+                         + sets("role=1", "incubation=1", "recovery=4", "wane=4", "field_source=0"))
         state, infections = int(float(st.get("custom0", "-1"))), int(float(st.get("custom3", "-1")))
         record("T5", "alone, a Patient Zero runs the whole course: infected, recovered after 5 bars, susceptible again after WANE",
                state == 0 and infections == 1, {"state_at_bar_12": state, "infections": infections})
+
+
+    if want("T6"):
+        # Alone with its defaults (the track itself as the field): a loud track catches it after the first bar and the
+        # fever is under way within eight bars.
+        _, st = h.render("t6_alone", ["--signal", "drums:120", "--bpm", "120", "--seconds", "16"])
+        state, s_now = int(float(st.get("custom0", "-1"))), float(st.get("custom1", "0"))
+        record("T6", "alone with its defaults, a loud track infects itself: infected and feverish (symptoms over 0.5) by bar 8",
+               state == 1 and s_now > 0.5, {"state": state, "symptoms": round(s_now, 3)})
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -524,6 +549,13 @@ def c_consciousness_tests(h, record, want):
         diff = float(np.abs(an.segment(ma, sr, 10.0, 13.0) - an.segment(mb, sr, 10.0, 13.0)).max())
         record("T3", "ERASE: the response after erasing is the untrained mind's (impulse energy within 0.1 dB)", abs(ea - eb) <= 0.1,
                {"init_db": round(ea, 3), "erased_db": round(eb, 3), "max_sample_difference": diff})
+
+
+    if want("T4"):
+        # FL keeps processing a mixer track with the transport stopped: nothing self-generated may sound then.
+        wav, _ = h.render("t4_stopped", ["--signal", "silence", "--seconds", "4", "--stopped"] + sets("transfer=1", "mix=1"))
+        m, _, _ = mono_of(wav)
+        record("T4", "transport stopped: TRANSFER does not hum", an.peak_db(m) < -120, {"peak_db": round(an.peak_db(m), 1)})
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -666,6 +698,13 @@ def numbers_station_tests(h, record, want):
         record("T4", "single sideband: the 900 Hz image at least 40 dB under 1100 Hz", rej >= 40, {"image_rejection_db": round(rej, 1)})
 
 
+    if want("T5"):
+        # FL keeps processing a mixer track with the transport stopped: nothing self-generated may sound then.
+        wav, _ = h.render("t5_stopped", ["--signal", "silence", "--seconds", "4", "--stopped"] + sets("filter_mode=2", "numbers=1", "numbers_level=1", "buzzer_level=1"))
+        m, _, _ = mono_of(wav)
+        record("T5", "transport stopped: no pips and no buzzer", an.peak_db(m) < -120, {"peak_db": round(an.peak_db(m), 1)})
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 def bateman_counts(t_end, t_hit, half_life, n0, activity, daughters, dt=16 / SR):
     lam = [math.log(2) / (b * half_life) for b in (0.05, 0.3, 1.5, 6.0)]
@@ -774,18 +813,16 @@ def clear_sky_tests(h, record, want):
         record("T3", "rain density scales with RAIN (drops in 10 s, 1.0 against 0.25: 4x +-30 %)", 2.8 <= ratio <= 5.2,
                {"drops": counts, "ratio": round(ratio, 2)})
     if want("T4"):
-        # Every weather state at its default element levels, on the reference drums and on white noise, then a storm
-        # with every element at maximum on the drums: the peak at most 6 dB over the input's. (White noise through the
-        # flash's +6 dB shelf above 6 kHz alone gains 5 dB, so a maximum storm on noise is not held to it.)
+        # Every weather state at its default element levels on two kinds of program (the reference drums and a saw
+        # chord), and a storm with every element at maximum: the peak at most 6 dB over the input's. (White noise is no
+        # program: the flash's +6 dB shelf over 5 kHz alone lifts its peak 5 dB.)
         rows, ok = {}, True
         storm_max = sets("weather=4", "rain=1", "wind=1", "lightning=1", "rumble=1")
-        for sig in ("drums:120", "noise"):
+        for sig in ("drums:120", "chord:C3,E3,G3"):
             tag = sig.split(":")[0]
             _, ref = h.render(f"t4_input_{tag}", ["--signal", sig, "--seconds", "30"] + sets("bypass=1"))
             ref_peak = float(ref.get("peak_db", "0"))
-            runs = [(f"weather{w}", sets(f"weather={w}")) for w in range(1, 6)]
-            if tag == "drums":
-                runs.append(("storm_max", storm_max))
+            runs = [(f"weather{w}", sets(f"weather={w}")) for w in range(1, 6)] + [("storm_max", storm_max)]
             for label, extra in runs:
                 _, st = h.render(f"t4_{label}_{tag}", ["--signal", sig, "--seconds", "30"] + extra)
                 over = float(st.get("peak_db", "99")) - ref_peak
@@ -795,6 +832,13 @@ def clear_sky_tests(h, record, want):
         beds = float(quiet.get("peak_db", "99"))
         record("T4", "levels bounded: no weather state more than 6 dB over the input's peak; silence in, only the beds (under -6 dBFS)",
                ok and beds < -6, {"over_input_peak_db": rows, "silence_peak_db": round(beds, 1)})
+
+
+    if want("T5"):
+        # FL keeps processing a mixer track with the transport stopped: nothing self-generated may sound then.
+        wav, _ = h.render("t5_stopped", ["--signal", "silence", "--seconds", "4", "--stopped"] + sets("weather=4", "rain=1", "wind=1", "lightning=1", "rumble=1"))
+        m, _, _ = mono_of(wav)
+        record("T5", "transport stopped: no rain, wind, thunder or hum", an.peak_db(m) < -120, {"peak_db": round(an.peak_db(m), 1)})
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -818,9 +862,13 @@ def spec():
         "psy_dog": {"stages": ["pack"], "panels": ["PACK", "ILLUSION", "SHAPE"], "transparent": dry + [("none", sets("phantom=0"))],
                     "tests": psy_dog_tests},
         "emission": {"stages": ["program"], "panels": ["COUNTDOWN", "SIREN", "WAVE", "SHELTER", "PEERS"], "transparent": [("listener", [])],
-                     "fuzz": ["--no-growth-check"], "tests": emission_tests},
+                     "fuzz": ["--no-growth-check"], "tests": emission_tests,
+                     "untrimmed": ["Standard Blowout", "Shelter in Bunker", "Open Field", "Periodic Sixteen", "Anabiotics",
+                                   "Severe Front"]},
         "contagion": {"stages": ["drift", "choke", "grit"], "panels": ["OUTBREAK", "SPREAD", "COURSE", "SYMPTOMS", "PEERS"],
-                      "transparent": [("healthy", [])], "tests": contagion_tests},
+                      "transparent": [("healthy", [])], "tests": contagion_tests,
+                      "untrimmed": ["Patient Zero", "Yantar Outbreak", "Slow Zombification", "Psi-helmet Issued", "Fever Dream",
+                                    "Pandemic R8"]},
         "hundred_rads": {"stages": ["auction"], "panels": ["MARKET", "AUCTION", "ECONOMY"], "transparent": [("idle", sets("depth=0"))],
                          "tests": hundred_rads_tests},
         "c_consciousness": {"stages": ["fdn"], "panels": ["MIND", "LEARNING", "HARMONY", "SPACE"], "transparent": dry,

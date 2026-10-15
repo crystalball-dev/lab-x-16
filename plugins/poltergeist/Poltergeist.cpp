@@ -35,12 +35,12 @@ namespace
             e.code = LABX16_CODE;
             e.faction = host::Faction::deepZone;
             e.params = {
-                { "throw",        "Throw",       Kind::real,    0.0f, 1.0f,  0.6f, 0.0f, Smooth::none,   "%",   "" },
+                { "throw",        "Throw",       Kind::real,    0.0f, 1.0f,  0.8f, 0.0f, Smooth::none,   "%",   "" },
                 { "gravity",      "Gravity",     Kind::real,    1.0f, 30.0f, 9.8f, 9.8f, Smooth::none,   "m/s2", "" },
-                { "bounce",       "Bounce",      Kind::real,    0.0f, 0.95f, 0.6f, 0.0f, Smooth::none,   "%",   "" },
-                { "life",         "Life",        Kind::real,    0.5f, 8.0f,  3.0f, 3.0f, Smooth::none,   "s",   "" },
-                { "objects",      "Objects",     Kind::integer, 1.0f, 12.0f, 6.0f, 0.0f, Smooth::none,   "",    "" },
-                { "doppler",      "Doppler",     Kind::real,    0.0f, 1.0f,  0.5f, 0.0f, Smooth::none,   "%",   "" },
+                { "bounce",       "Bounce",      Kind::real,    0.0f, 0.95f, 0.7f, 0.0f, Smooth::none,   "%",   "" },
+                { "life",         "Life",        Kind::real,    0.5f, 8.0f,  4.0f, 3.0f, Smooth::none,   "s",   "" },
+                { "objects",      "Objects",     Kind::integer, 1.0f, 12.0f, 8.0f, 0.0f, Smooth::none,   "",    "" },
+                { "doppler",      "Doppler",     Kind::real,    0.0f, 1.0f,  0.8f, 0.0f, Smooth::none,   "%",   "" },
                 { "depth_filter", "Depth",       Kind::real,    0.0f, 1.0f,  0.6f, 0.0f, Smooth::none,   "%",   "" },
                 { "rage",         "Rage",        Kind::real,    0.0f, 1.0f,  0.0f, 0.0f, Smooth::linear, "%",   "" },
                 { "sensitivity",  "Sensitivity", Kind::real,    0.0f, 1.0f,  0.5f, 0.0f, Smooth::linear, "%",   "" },
@@ -48,12 +48,12 @@ namespace
             e.stages = { "objects" };
             e.presets = {
                 { "Init", {} },
-                { "Lab X-18 Lobby", { { "objects", 8.0f }, { "bounce", 0.55f }, { "depth_filter", 0.8f }, { "output", -0.8f } } },
-                { "Thrown Crates", { { "throw", 0.9f }, { "bounce", 0.4f }, { "life", 2.0f }, { "output", -0.7f } } },
-                { "Burer Lift", { { "rage", 0.8f }, { "throw", 0.5f }, { "output", -1.2f } } },
-                { "Low Gravity", { { "gravity", 2.0f }, { "life", 6.0f }, { "throw", 0.4f }, { "output", -0.2f } } },
-                { "Rubber Room", { { "bounce", 0.95f }, { "life", 5.0f }, { "output", -1.1f } } },
-                { "Rage", { { "rage", 1.0f }, { "objects", 12.0f }, { "throw", 1.0f }, { "output", -1.0f } } },
+                { "Lab X-18 Lobby", { { "objects", 10.0f }, { "bounce", 0.65f }, { "depth_filter", 0.8f }, { "output", -3.1f } } },
+                { "Thrown Crates", { { "throw", 1.0f }, { "bounce", 0.5f }, { "life", 3.0f }, { "output", -2.7f } } },
+                { "Burer Lift", { { "rage", 0.8f }, { "throw", 0.6f }, { "output", -3.3f } } },
+                { "Low Gravity", { { "gravity", 2.0f }, { "life", 7.0f }, { "throw", 0.5f }, { "output", -0.7f } } },
+                { "Rubber Room", { { "bounce", 0.95f }, { "life", 6.0f }, { "output", -4.4f } } },
+                { "Rage", { { "rage", 1.0f }, { "objects", 12.0f }, { "throw", 1.0f }, { "output", -2.8f } } },
             };
             return e;
         }();
@@ -298,7 +298,7 @@ namespace
             slot->ratio = ratio;
             slot->age = 0;
             const float z = o.p[2];
-            slot->gain = std::min (1.0f, speed / 6.0f) / (1.0f + 3.0f * z * depthNow) * 0.8f;
+            slot->gain = std::min (1.2f, speed / 3.5f) / (1.0f + 1.5f * z * depthNow);   // near the hit's own level
             dsp::panGains (std::clamp (o.p[0], -1.0f, 1.0f), slot->panL, slot->panR);
             slot->lpCoef = dsp::onePoleCoefHz (std::min (20000.0f * std::pow (0.1f, z * depthNow), 0.45f * sr), sr);
             const float shelf = 3.0f * std::clamp (o.p[1] / roomHeight, 0.0f, 1.0f);

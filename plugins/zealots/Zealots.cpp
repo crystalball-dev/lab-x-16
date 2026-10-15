@@ -20,7 +20,7 @@ namespace
 
     enum Param : int { agents = 0, zealotry, maxDetune, leaderDelay, spread, fear, predatorSource, chant };
     constexpr int maxAgents = 16;
-    constexpr float minDelayMs = 2.0f, maxDelayMs = 60.0f, separationMs = 1.5f;
+    constexpr float minDelayMs = 2.0f, maxDelayMs = 80.0f, separationMs = 4.0f;
 
     const host::EffectInfo& effectInfo()
     {
@@ -36,23 +36,23 @@ namespace
             e.sidechain = true;
             e.params = {
                 { "agents",          "Agents",     Kind::integer, 2.0f, 16.0f,  12.0f, 0.0f,  Smooth::none,   "",   "" },
-                { "zealotry",        "Zealotry",   Kind::real,    0.0f, 1.0f,   0.5f,  0.0f,  Smooth::linear, "%",  "" },
-                { "max_detune",      "Max Detune", Kind::real,    0.0f, 100.0f, 25.0f, 30.0f, Smooth::linear, "ct", "" },
-                { "leader_delay",    "Leader",     Kind::real,    5.0f, 40.0f,  12.0f, 0.0f,  Smooth::linear, "ms", "" },
+                { "zealotry",        "Zealotry",   Kind::real,    0.0f, 1.0f,   0.35f, 0.0f,  Smooth::linear, "%",  "" },
+                { "max_detune",      "Max Detune", Kind::real,    0.0f, 100.0f, 40.0f, 30.0f, Smooth::linear, "ct", "" },
+                { "leader_delay",    "Leader",     Kind::real,    5.0f, 40.0f,  20.0f, 0.0f,  Smooth::linear, "ms", "" },
                 { "spread",          "Spread",     Kind::real,    0.0f, 1.0f,   0.8f,  0.0f,  Smooth::linear, "%",  "" },
                 { "fear",            "Fear",       Kind::real,    0.0f, 1.0f,   0.5f,  0.0f,  Smooth::linear, "%",  "" },
                 { "predator_source", "Predator",   Kind::choice,  0.0f, 2.0f,   1.0f,  0.0f,  Smooth::none,   "",   "Off|Input|Sidechain" },
-                { "chant",           "Chant",      Kind::real,    0.0f, 1.0f,   0.0f,  0.0f,  Smooth::linear, "%",  "" },
+                { "chant",           "Chant",      Kind::real,    0.0f, 1.0f,   0.25f, 0.0f,  Smooth::linear, "%",  "" },
             };
             e.stages = { "flock" };
             e.presets = {
                 { "Init", {} },
-                { "Chant", { { "zealotry", 0.85f }, { "chant", 0.6f }, { "agents", 12.0f }, { "output", -1.6f } } },
-                { "Scattered Crowd", { { "zealotry", 0.0f }, { "max_detune", 35.0f }, { "spread", 1.0f }, { "output", -3.3f } } },
-                { "Procession", { { "zealotry", 0.65f }, { "leader_delay", 25.0f }, { "max_detune", 15.0f }, { "output", -5.1f } } },
-                { "Under Fire", { { "fear", 1.0f }, { "zealotry", 0.45f }, { "output", -4.0f } } },
-                { "Monolith Wall", { { "agents", 16.0f }, { "zealotry", 1.0f }, { "chant", 0.35f }, { "spread", 1.0f }, { "output", -5.7f } } },
-                { "Whisper Congregation", { { "agents", 8.0f }, { "zealotry", 0.3f }, { "chant", 0.8f }, { "max_detune", 12.0f }, { "output", 0.0f } } },
+                { "Chant", { { "zealotry", 0.85f }, { "chant", 0.65f }, { "agents", 12.0f }, { "output", -2.1f } } },
+                { "Scattered Crowd", { { "zealotry", 0.0f }, { "max_detune", 55.0f }, { "spread", 1.0f }, { "output", -2.9f } } },
+                { "Procession", { { "zealotry", 0.6f }, { "leader_delay", 30.0f }, { "max_detune", 25.0f }, { "output", -2.5f } } },
+                { "Under Fire", { { "fear", 1.0f }, { "zealotry", 0.45f }, { "output", -2.7f } } },
+                { "Monolith Wall", { { "agents", 16.0f }, { "zealotry", 1.0f }, { "chant", 0.5f }, { "spread", 1.0f }, { "output", -5.5f } } },
+                { "Whisper Congregation", { { "agents", 8.0f }, { "zealotry", 0.3f }, { "chant", 0.85f }, { "max_detune", 20.0f }, { "output", -0.4f } } },
             };
             return e;
         }();
@@ -100,8 +100,9 @@ namespace
             count = std::clamp ((int) std::lround (v[agents]), 2, maxAgents);
             const float z = v[zealotry];
             // At ZEALOTRY 0 only a faint pull keeps the crowd inside the line; at 1 the pull and the alignment are
-            // strong enough to make the flock one voice.
-            const float kc = 0.05f + 5.45f * z, ks = 0.2f + 2.0f * (1.0f - z), align = 0.5f * z;
+            // strong enough to make the flock one voice. Cohesion grows with ZEALOTRY cubed (alignment squared): grown
+            // linearly it pulled the crowd into unison by a third of the knob, leaving the rest of it in tune.
+            const float kc = 0.05f + 5.45f * z * z * z, ks = 0.2f + 2.0f * (1.0f - z), align = 0.5f * z * z;
             const float limit = v[maxDetune];
             const float leader = v[leaderDelay];
             const float dt = (float) n / sr;
@@ -197,8 +198,8 @@ namespace
                 wetPower += (0.5f * (wl * wl + wr * wr) - wetPower) * agcCoef;
                 const float wanted = std::clamp (std::sqrt ((inPower + 1.0e-9f) / (wetPower + 1.0e-9f)), 0.25f, 4.0f);
                 agcGain += (wanted - agcGain) * agcCoef;
-                wl *= agcGain * 0.7f;
-                wr *= agcGain * 0.7f;
+                wl *= agcGain * 0.9f;
+                wr *= agcGain * 0.9f;
                 if (chantNow > 1.0e-4f)
                 {
                     wl += (formants.process (0, wl) - wl) * chantNow;

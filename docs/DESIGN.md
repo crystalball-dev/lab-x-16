@@ -341,3 +341,106 @@ pass. The whole suite takes about 6 minutes in six parallel runners. After a cha
 23 plugins (VST3 and standalone) and 25 harnesses with `msbuild build\LABX16.sln /m:12` takes about 14 minutes; JUCE's
 modules are not recompiled. (`cmake --build` given several `--target` names under the Visual Studio generator builds
 them one MSBuild at a time, with one link running; a whole-solution build runs a dozen compiles and links at once.)
+
+## Listening round 1 (2026-10-15): from tested to heard
+
+The user's first FL session with the whole suite: GAUSS "not working"; CLEAR SKY's lightning and rumble not working;
+ZEALOTS, SILO, WISH GRANTER and POLTERGEIST far too subtle; PSY-DOG doing nothing; most of CONTAGION not working;
+EMISSION making no sound; NUMBERS STATION's pips and buzzer playing on with the transport stopped. Every check had
+passed. The T-tests proved each mechanism with signals built for it (a hit after seconds of digital silence, a held
+tone, a storm forced on, several instances on the bus); none asked whether the effect is heard on what a mixer track
+carries, alone, at its defaults, in a looping pattern, with FL's transport stopped.
+
+`test/audibility.py` now asks that. It renders every preset on the suite's drums, a sustained pad and a bass line and
+reports the difference from the dry render, relative to the dry, in dB. The effects the user heard plainly (KAYMANOV,
+RAINBOW, CARRIER) sat between -11 and +14 dB. The reported ones sat between -12 and -96 dB, and EMISSION and most of
+CONTAGION at -232 dB: bit-identical to the input.
+
+**Why, effect by effect, and what changed** (all 0.1.1).
+
+- GAUSS charged only while the input stayed under -50 dBFS (absolute) for seconds: real material never gets there, so
+  it never fired. QUIET is now a gap below the track's own recent peak (-48..-6 dB, default -18; an instant-attack,
+  1.5 s-release peak), and silence under -70 dBFS still counts, so the space between the hits of a loop charges it.
+  RECHARGE 2 s became 0.5 s, PULSE 20 ms 40 ms (range to 120). The whine follows the track's level (a slow follower,
+  so a hit does not lift it just as the charge falls; WHINE x 0.6 at full charge) instead of an absolute level near
+  -46 dBFS.
+- CLEAR SKY: LIGHTNING only scaled the storm amount, which is zero in every weather but Storm, and the Auto weather
+  starts in Clear: the knob did nothing. In a storm it struck every 10 s, its thunder came 8.7 s later (3 km) as
+  120 Hz noise near -38 dBFS RMS. Lightning now strikes in any weather at LIGHTNING x (0.25 + 0.75 storm) a second
+  (heat lightning in a clear sky) with a crack that is louder the closer the storm; the thunder is rolling brown noise
+  under 180 Hz; every weather sound follows the track's recent peak (never under -30 dBFS) instead of fixed levels
+  near -46 dBFS, and together they are soft-limited at 0.9 of that peak, so a full storm never towers over the track
+  (a storm with every element at maximum peaked 7.5 dB over a held chord before the limit; 3.5 after). The wind's
+  sway is a balance law (the near side stays at unity; the constant-power pan lifted it 2.6 dB). DISTANCE defaults to
+  1.2 km (3.5 s), FRONT RATE to 8 bars, RAIN to 0.5, LIGHTNING to 0.6; the weather glides in 1.5 s instead of 4, and
+  Auto's first front brings rain. Morning Clear gained a breeze. The calm skies (Clear, Overcast, Night) stay
+  atmospheres, mostly filtering: -14 to -20 dB on drums.
+- PSY-DOG's phantoms sat 7-30 ms behind the track (the doubling range, where they fuse with it), detuned 5 ct, 11 dB
+  down each, and an attack sent them away for 60 ms plus a 400 ms bloom, so on anything rhythmic they were never
+  there. They now sit 25-140 ms behind, detune 12 ct (range to 30) on a livelier walk, at PHANTOM x 1.1 / sqrt(PACK),
+  and return after a 25 ms hold and a 180 ms bloom.
+- ZEALOTS at its defaults converged into a near-unison doubling 12 ms behind the track. The agents keep 4 ms apart
+  (the flock spans tens of milliseconds: a crowd), the leader sits at 20 ms, MAX DETUNE defaults to 40 ct, CHANT to
+  0.25, and the flock is held at 0.9 of the track's power instead of 0.7. Cohesion grew linearly with ZEALOTRY and
+  pulled the crowd into tune by a third of the knob (2.8 ct of spread at 0.35); it now grows with ZEALOTRY cubed
+  (alignment squared): 18 ct of spread at 0.2, 11 at the default 0.35, 4 at 0.5, unison toward 1.
+- POLTERGEIST replayed impacts at min(1, speed / 6) x 0.8 and a third of that at depth: a 1 m drop landed near -8 dB
+  and every bounce lower, under the next hits. Impacts now land near the hit's own level (min(1.2, speed / 3.5), half
+  the depth loss); objects fly higher (THROW 0.8), bounce more (0.7), live longer (4 s), number 8, Doppler 0.8.
+- SILO's wet leaves the network 7-14 dB under the dry and DUCK pushed it down further; the presets mixed at 0.25-0.35
+  (equal power): the room sat 20-25 dB under the track. The wet now leaves 7 dB louder, DUCK defaults to 0.2, the
+  presets mix 0.5-0.75.
+- WISH GRANTER: the same at 4-7 dB, presets at 0.3; and Frozen Wish turned FREEZE on at load, which freezes an empty
+  network: silence. The wet leaves 4 dB louder, the presets mix 0.45-0.55 with more shimmer, and Frozen Wish is a
+  near-endless decay that still takes input.
+- CONTAGION alone: a Stalker only catches it from infected peers, the field source was off, and only Patient Zero
+  infected itself; a loop's jump back started a fresh outbreak every pass, and full fever needs about seven bars.
+  The field source now defaults to the track itself (its mean level over a bar against -30 dB, IMMUNITY resisting it
+  too), the course counts the bars played so a loop carries it on, only the transport starting begins a fresh
+  outbreak, WANE defaults to 8 bars, and every preset works on one track within a few bars (Carrier Only, silent by
+  definition, became Fever Dream; the Carrier role is still on ROLE; Psi-helmet Issued is a mild illness, immunity
+  0.15 and symptoms 0.45, rather than a helmet that kept the track clean for the length of an audition).
+- EMISSION alone: a Listener only follows a siren, and ARM was Off: nothing ever fired. A listener that has never
+  heard a siren now runs its own schedule and sounds the siren itself, and the defaults are ARM At Bar, COUNTDOWN 3
+  (the warning from bar 1, the blowout at bar 3), so a pattern loop of four bars or more replays it on every pass;
+  every preset inherits that (Shelter in Bunker at 0.6: the blowout through walls). ARTIFACT still reseeds only on a
+  real Siren's schedule.
+- OASIS (found by the same measurement, not yet heard): DEHISS took 9-24 dB off a held chord. Its noise floor rises at
+  1 dB/s toward any steady level, so a sustained note was learned as the floor and expanded away. The floor is now
+  capped at -48 dBFS per band: hiss lives below that.
+
+**The transport.** FL keeps processing a mixer track with the transport stopped, so anything an effect sounds on its
+own went on forever: NUMBERS STATION's pips and buzzer (reported), and by the same token CLEAR SKY's weather, GAUSS's
+whine, DOSIMETER's clicks and dust, ARTIFACT's Battery sparks and C-CONSCIOUSNESS's TRANSFER hum. `dsp::PlayGate`
+sounds them while the song plays and fades them out over 50 ms when it stops (the first block takes the state
+directly, so nothing fades in at load); the processing of the track's own audio is untouched. NUMBERS STATION,
+DOSIMETER, ARTIFACT and C-CONSCIOUSNESS are 0.1.1 for this alone.
+
+**Tests added.** NUMBERS STATION T5, CLEAR SKY T5, GAUSS T5, C-CONSCIOUSNESS T4 and DOSIMETER T5: silence in with
+the transport stopped gives silence out. EMISSION T6: one instance at its defaults fires at bar 3 to the sample.
+CONTAGION T6: one instance at its defaults on a loud track is infected and feverish by bar 8. CONTAGION's spreading
+tests (T1, T2, T5) set FIELD SOURCE None, as they test the bus. EMISSION's and CONTAGION's presets keep OUTPUT at
+0 dB (an event and a course, not a steady colour). CLEAR SKY T4 bounds levels on two kinds of program (drums and a saw
+chord) with every weather state and a full storm; white noise is no program (the +6 dB flash shelf alone lifts its
+peak 5 dB).
+
+### Listening round 1 results (2026-10-15)
+
+`test/audibility.py`, on the suite's drums: the difference from the dry render in dB, at Init and over the presets.
+
+| Effect | Before: Init / presets | After: Init / presets | Checks |
+|---|---|---|---|
+| GAUSS 0.1.1 | -39.5 / -50.5 to -8.7 | -4.7 / -17.6 to -9.1 (presets loudness-matched: the punch on hits after gaps, the rest turned down) | 14/14 |
+| CLEAR SKY 0.1.1 | -32.0 / -26.7 to -12.0 | -11.3 / -20.1 to -6.1 (Storm Front -6.4, Emission Sky -6.1) | 15/15 |
+| PSY-DOG 0.1.1 | -20.6 / -30.7 to -15.9 | -8.0 / -14.5 to -5.1 (pad: -5.6 / -4.5 to -2.9) | 13/13 |
+| ZEALOTS 0.1.1 | 2.8 ct of detune spread at the defaults | 10.8 ct; a flock tens of milliseconds wide | 14/14 |
+| POLTERGEIST 0.1.1 | -6.4 / -15.3 to -6.0 | +0.9 / -8.0 to -1.1 | 13/13 |
+| SILO 0.1.1 | +0.4 (13.7 dB quieter) / -28.2 to -17.8 | +1.6 (5.1 dB quieter) / -10.0 to -2.0 | 15/15 |
+| WISH GRANTER 0.1.1 | +0.8 (6.7 dB quieter) / -21.4 to -10.4 | +1.9 (2.7 dB quieter) / -4.1 to -1.4 | 14/14 |
+| CONTAGION 0.1.1 | -232 (identical) / all -232 but Patient Zero | -3.8 / -12.9 (Slow Zombification) to +0.8 | 16/16 |
+| EMISSION 0.1.1 | -232 everywhere | -4.6 / -12.6 (Shelter in Bunker) to -1.9 | 16/16 |
+| OASIS 0.1.1 | the pad 9-24 dB quieter | the pad within 0.1 dB | 13/13 |
+
+NUMBERS STATION, DOSIMETER, ARTIFACT and C-CONSCIOUSNESS (0.1.1, the transport gate) pass 15, 15, 14 and 14 checks.
+The whole suite: 326 checks, all pass, pluginval 5 and 10 on every bundle included. GAUSS and POLTERGEIST still leave
+a sustained pad alone: they answer hits.

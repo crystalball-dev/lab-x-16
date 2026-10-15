@@ -67,6 +67,7 @@ namespace
             sr = (float) sampleRate;
             follower.set (0.005f, 0.25f, sr);
             countWindow = std::max (1, (int) std::lround (0.1 * sampleRate));
+            playing.prepare (sr);
             setupMedium();
             reset();
             fresh = true;
@@ -104,6 +105,7 @@ namespace
 
         void control (const float* v, const host::BlockContext& ctx, int) override
         {
+            playing.set (ctx.transport->playing);
             if (ctx.callsign != callsign)
             {
                 callsign = ctx.callsign;
@@ -167,14 +169,16 @@ namespace
             guard (0, l, r, n);
 
             // GEIGER: Poisson clicks at dose^2 x 400 /s, from a constant rate (TRACK 0) to the input's level (TRACK 1).
+            // The counter and the dust sound while the song plays: FL keeps processing a stopped track.
             const float base = doseNow * doseNow * 400.0f;
             for (int i = 0; i < n; ++i)
             {
                 const float rate = base * ((1.0f - trackNow) + trackNow * env[(size_t) i]);
                 const float cl = geiger[0].next (rate);
                 const float cr = stereoClicks ? geiger[1].next (rate) : cl;
-                l[i] += cl * clickGain + dustGen[0].next (dryL[(size_t) i], dustAmount);
-                r[i] += cr * clickGain + dustGen[1].next (dryR[(size_t) i], dustAmount);
+                const float gate = playing.next();
+                l[i] += (cl * clickGain + dustGen[0].next (dryL[(size_t) i], dustAmount)) * gate;
+                r[i] += (cr * clickGain + dustGen[1].next (dryR[(size_t) i], dustAmount)) * gate;
             }
 
             const int clicks = geiger[0].takeClicks();
@@ -224,6 +228,7 @@ namespace
         dsp::Crush crush;
         dsp::Follower follower;
         std::array<dsp::Geiger, 2> geiger;
+        dsp::PlayGate playing;
         std::array<dsp::Dust, 2> dustGen;
         std::array<Channel, 2> chan;
         float sr = 48000.0f, toneHz = 3000.0f, clickRate = 0.0f;

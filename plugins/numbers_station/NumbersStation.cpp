@@ -89,6 +89,7 @@ namespace
             buzzHp.setHz (300.0f, true, sr);
             buzzLp.setHz (3000.0f, false, sr);
             edge = 1.0f / std::max (1.0f, 0.002f * sr);
+            onAir.prepare (sr);
             reset();
         }
 
@@ -165,6 +166,9 @@ namespace
 
             // NUMBERS: a five-digit group from the key and the bar, at the start of every bar; digit d is a pip at
             // 400 + 60 d Hz, 80 ms on and 40 ms off.
+            // The pips and the buzzer are the station's own transmission: on the air while the song plays, off when it
+            // stops (the hop filter on the track's own audio keeps working).
+            onAir.set (t.playing);
             numbersOn = v[numbers] > 0.5f;
             numbersGain = std::clamp (v[numbersLevel] + 0.5f * tx, 0.0f, 1.0f) * 0.3f;
             const double qpb = t.quartersPerBar(), secPerQ = 60.0 / std::max (1.0, t.bpm);
@@ -230,6 +234,7 @@ namespace
                     const float pulse = buzzPhase < 0.08f ? 1.0f : 0.0f;   // narrow pulses: a buzz rich in harmonics
                     extra += buzzLp.process (buzzHp.process (pulse - 0.08f)) * buzzGain * buzzerGain * 4.0f;
                 }
+                extra *= onAir.next();
                 l[i] += extra;
                 r[i] += extra;
             }
@@ -255,6 +260,7 @@ namespace
         std::atomic<uint32_t> textHash { 0 };
         float sr = 48000.0f, logHz = -1.0f, carrierNow = 440.0f, depth = 0.0f, numbersGain = 0.09f, buzzerGain = 0.0f, buzzHz = 25.0f;
         float pipPhase = 0.0f, buzzPhase = 0.0f, pipGain = 0.0f, buzzGain = 0.0f, edge = 0.01f;
+        dsp::PlayGate onAir;
         double songSeconds = 0.0;
         int mode = pass, sidebandNow = 1, digit = -1, lastDigit = 0;
         bool numbersOn = false;

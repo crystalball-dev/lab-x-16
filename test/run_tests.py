@@ -169,6 +169,11 @@ def dosimeter_tests(h, record, want):
         low, high = level[1000] - level[125], level[1000] - level[8000]
         record("T4", "Phone: 125 Hz and 8 kHz (an octave past 250 Hz and 4 kHz) at least 24 dB down", low >= 24 and high >= 24,
                {"below_db": round(low, 1), "above_db": round(high, 1)})
+    if want("T5"):
+        # FL keeps processing a mixer track with the transport stopped: the counter and the dust fall silent then.
+        wav, _ = h.render("t5_stopped", ["--signal", "silence", "--seconds", "4", "--stopped"] + sets("dose=1", "track=0", "dust=1"))
+        m, _, _ = mono_of(wav)
+        record("T5", "transport stopped: no clicks and no dust", an.peak_db(m) < -120, {"peak_db": round(an.peak_db(m), 1)})
 
 
 def silo_tests(h, record, want):

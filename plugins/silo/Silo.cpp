@@ -35,7 +35,7 @@ namespace
                 { "damping",         "Damping",         Kind::real,    0.0f,  1.0f,    0.5f,   0.0f,   Smooth::linear, "%",  "" },
                 { "modal",           "Modal",           Kind::real,    0.0f,  1.0f,    0.3f,   0.0f,   Smooth::linear, "%",  "" },
                 { "predelay",        "Pre-delay",       Kind::real,    0.0f,  30.0f,   4.0f,   0.0f,   Smooth::linear, "ms", "" },
-                { "duck",            "Duck",            Kind::real,    0.0f,  1.0f,    0.4f,   0.0f,   Smooth::linear, "%",  "" },
+                { "duck",            "Duck",            Kind::real,    0.0f,  1.0f,    0.2f,   0.0f,   Smooth::linear, "%",  "" },
                 { "duck_release",    "Duck Release",    Kind::real,    20.0f, 1000.0f, 180.0f, 150.0f, Smooth::log,    "ms", "" },
                 { "tunnel",          "Tunnel",          Kind::choice,  0.0f,  1.0f,    0.0f,   0.0f,   Smooth::none,   "",   "Off|On" },
                 { "tunnel_length",   "Tunnel Length",   Kind::real,    0.5f,  2.0f,    1.0f,   1.0f,   Smooth::log,    "x",  "" },
@@ -45,17 +45,17 @@ namespace
             e.stages = { "fdn" };
             e.presets = {
                 { "Init", {} },
-                { "Emitter Chamber", { { "mix", 0.3f }, { "levels", 4.0f }, { "size", 0.6f }, { "decay", 2.2f }, { "modal", 0.45f },
-                                       { "damping", 0.35f }, { "duck", 0.2f }, { "output", 0.9f } } },
-                { "Level Three Switch", { { "mix", 0.3f }, { "levels", 3.0f }, { "size", 0.4f }, { "decay", 1.0f }, { "modal", 0.25f }, { "output", 1.0f } } },
-                { "Controller's Storage", { { "mix", 0.25f }, { "levels", 1.0f }, { "size", 0.15f }, { "decay", 0.7f }, { "modal", 0.85f },
-                                            { "damping", 0.6f }, { "duck", 0.3f }, { "output", 0.8f } } },
-                { "Drainage Tunnel", { { "mix", 0.3f }, { "tunnel", 1.0f }, { "tunnel_length", 1.25f }, { "tunnel_feedback", 0.55f },
-                                       { "duck", 0.25f }, { "output", 0.9f } } },
-                { "Elevator Shaft", { { "mix", 0.3f }, { "levels", 5.0f }, { "size", 1.0f }, { "decay", 4.5f }, { "modal", 0.2f },
-                                      { "damping", 0.4f }, { "predelay", 12.0f }, { "output", 0.9f } } },
-                { "Airlock", { { "mix", 0.35f }, { "levels", 2.0f }, { "size", 0.5f }, { "decay", 1.6f }, { "duck", 1.0f },
-                               { "duck_release", 260.0f }, { "output", 1.4f } } },
+                { "Emitter Chamber", { { "mix", 0.55f }, { "levels", 4.0f }, { "size", 0.6f }, { "decay", 2.2f }, { "modal", 0.45f },
+                                       { "damping", 0.35f }, { "duck", 0.1f }, { "output", 2.2f } } },
+                { "Level Three Switch", { { "mix", 0.5f }, { "levels", 3.0f }, { "size", 0.4f }, { "decay", 1.4f }, { "modal", 0.3f }, { "output", 2.4f } } },
+                { "Controller's Storage", { { "mix", 0.5f }, { "levels", 1.0f }, { "size", 0.15f }, { "decay", 1.0f }, { "modal", 0.85f },
+                                            { "damping", 0.5f }, { "duck", 0.15f }, { "output", 2.8f } } },
+                { "Drainage Tunnel", { { "mix", 0.55f }, { "tunnel", 1.0f }, { "tunnel_length", 1.25f }, { "tunnel_feedback", 0.6f },
+                                       { "duck", 0.1f }, { "output", 2.6f } } },
+                { "Elevator Shaft", { { "mix", 0.6f }, { "levels", 5.0f }, { "size", 1.0f }, { "decay", 4.5f }, { "modal", 0.2f },
+                                      { "damping", 0.4f }, { "predelay", 12.0f }, { "duck", 0.0f }, { "output", 1.2f } } },
+                { "Airlock", { { "mix", 0.75f }, { "levels", 2.0f }, { "size", 0.5f }, { "decay", 2.0f }, { "duck", 1.0f },
+                               { "duck_release", 260.0f }, { "output", 7.9f } } },
             };
             return e;
         }();
@@ -164,12 +164,14 @@ namespace
             else
                 fdn.process (l, r, n, settings);
 
+            // The chamber's wet comes out of the network 7-14 dB under the dry; +7 dB brings it level with the dry at
+            // MIX 100 %, so the room is heard at the mixes rooms are used at.
             const float step = (gainEnd - duckGain) / (float) n;
             for (int i = 0; i < n; ++i)
             {
                 duckGain += step;
-                l[i] *= duckGain;
-                r[i] *= duckGain;
+                l[i] *= duckGain * wetMakeup;
+                r[i] *= duckGain * wetMakeup;
             }
             duckGain = gainEnd;
             guard (0, l, r, n);
@@ -218,7 +220,8 @@ namespace
         dsp::DelayLine tunnelLine;
         std::array<dsp::SVF, 1> bandHp, bandLp;
         std::array<float, 6> tapPanL {}, tapPanR {};
-        float sr = 48000.0f, duckEnv = 0.0f, duckGain = 1.0f, duckAmount = 0.4f, attackCoef = 0.002f, releaseCoef = 0.0001f;
+        float sr = 48000.0f, duckEnv = 0.0f, duckGain = 1.0f, duckAmount = 0.2f, attackCoef = 0.002f, releaseCoef = 0.0001f;
+        static constexpr float wetMakeup = 2.2387211f;   // +7 dB
         float lengthNow = -1.0f, lengthTarget = 1.0f, feedback = 0.5f;
         int appliedLevel = 3, wantedLevel = 3;
         bool tunnelOn = false, wantedTunnel = false, fresh = true;

@@ -1,7 +1,8 @@
 // PSY-DOG // ПСИ-СОБАКА — the psy-dog's illusory pack: copies that vanish when struck. Up to six phantoms, each the
 // input delayed, slowly detuned and smeared through all-pass chains (a different chain per side, so each phantom is wide
-// on its own), panned out to alternate sides. They live only in sustained material: an attack makes them vanish within
-// VANISH, they hold off for 60 ms, and BLOOM brings them back.
+// on its own), panned out to alternate sides, each 25-140 ms behind the track so the pack is heard as a pack and not as
+// a doubling. An attack makes them vanish within VANISH; they hold off for 25 ms and BLOOM brings them back, so between
+// the hits of a loop they slip in again.
 
 #include "core/host/EffectProcessor.h"
 #include "core/dsp/Allpass.h"
@@ -34,21 +35,21 @@ namespace
             e.params = {
                 { "pack",    "Pack",    Kind::integer, 1.0f,  6.0f,    3.0f,   0.0f,   Smooth::none,   "",   "" },
                 { "phantom", "Phantom", Kind::real,    0.0f,  1.0f,    0.6f,   0.0f,   Smooth::linear, "%",  "" },
-                { "bloom",   "Bloom",   Kind::real,    50.0f, 2000.0f, 400.0f, 400.0f, Smooth::none,   "ms", "" },
+                { "bloom",   "Bloom",   Kind::real,    50.0f, 2000.0f, 180.0f, 400.0f, Smooth::none,   "ms", "" },
                 { "vanish",  "Vanish",  Kind::real,    5.0f,  200.0f,  30.0f,  40.0f,  Smooth::none,   "ms", "" },
                 { "spread",  "Spread",  Kind::real,    0.0f,  1.0f,    0.8f,   0.0f,   Smooth::linear, "%",  "" },
-                { "detune",  "Detune",  Kind::real,    0.0f,  20.0f,   5.0f,   0.0f,   Smooth::linear, "ct", "" },
+                { "detune",  "Detune",  Kind::real,    0.0f,  30.0f,   12.0f,  0.0f,   Smooth::linear, "ct", "" },
                 { "darken",  "Darken",  Kind::real,    0.0f,  1.0f,    0.3f,   0.0f,   Smooth::linear, "%",  "" },
             };
             e.stages = { "pack" };
             e.presets = {
                 { "Init", {} },
-                { "Pack of Three", { { "pack", 3.0f }, { "phantom", 0.7f } } },
-                { "Six Phantoms", { { "pack", 6.0f }, { "phantom", 0.8f }, { "spread", 1.0f } } },
-                { "Vanish Fast", { { "vanish", 5.0f }, { "bloom", 250.0f }, { "phantom", 0.75f } } },
-                { "Slow Bloom", { { "bloom", 1600.0f }, { "vanish", 20.0f } } },
-                { "Dark Pack", { { "darken", 0.85f }, { "pack", 5.0f }, { "detune", 9.0f } } },
-                { "Wide Illusion", { { "spread", 1.0f }, { "pack", 4.0f }, { "detune", 12.0f }, { "phantom", 0.7f } } },
+                { "Pack of Three", { { "pack", 3.0f }, { "phantom", 0.75f }, { "output", -1.1f } } },
+                { "Six Phantoms", { { "pack", 6.0f }, { "phantom", 0.85f }, { "spread", 1.0f }, { "detune", 16.0f }, { "output", -1.3f } } },
+                { "Vanish Fast", { { "vanish", 5.0f }, { "bloom", 90.0f }, { "phantom", 0.8f }, { "output", -1.6f } } },
+                { "Slow Bloom", { { "bloom", 900.0f }, { "vanish", 20.0f }, { "phantom", 0.8f }, { "output", -0.2f } } },
+                { "Dark Pack", { { "darken", 0.85f }, { "pack", 5.0f }, { "detune", 18.0f }, { "phantom", 0.8f }, { "output", -1.1f } } },
+                { "Wide Illusion", { { "spread", 1.0f }, { "pack", 4.0f }, { "detune", 24.0f }, { "phantom", 0.75f }, { "output", -1.2f } } },
             };
             return e;
         }();
@@ -64,14 +65,14 @@ namespace
             detector.prepare (sr);
             for (auto& ph : phantoms)
             {
-                ph.delay.prepare ((int) std::ceil (0.032f * sr));
+                ph.delay.prepare ((int) std::ceil (0.15f * sr));
                 ph.shift.prepare (sr, 0.03f);
                 ph.shift.setWindow (0.02f);
                 for (auto& side : ph.allpass)
                     for (auto& a : side)
                         a.prepare ((int) std::ceil (0.024f * sr) + 4);
             }
-            holdSamples = (int) (0.06f * sr);
+            holdSamples = (int) (0.025f * sr);
             configure (callsign);
             reset();
         }
@@ -94,7 +95,7 @@ namespace
             holdLeft = 0;
         }
 
-        double tailSeconds (const float*) const override { return 0.2; }
+        double tailSeconds (const float*) const override { return 0.4; }
 
         void control (const float* v, const host::BlockContext& ctx, int n) override
         {
@@ -104,7 +105,7 @@ namespace
                 configure (callsign);
             }
             count = std::clamp ((int) std::lround (v[pack]), 1, maxPhantoms);
-            level = v[phantom] * 0.8f / std::sqrt ((float) count);
+            level = v[phantom] * 1.1f / std::sqrt ((float) count);
             vanishStep = 1.0f / std::max (1.0f, v[vanish] * 0.001f * sr);
             bloomCoef = dsp::onePoleCoef (v[bloom] * 0.001f / 2.2f, sr);   // within 1 dB of full after BLOOM
             const float darkHz = 18000.0f * (1.0f - 0.85f * v[darken]);
@@ -115,7 +116,7 @@ namespace
                 ph.lpR.setHz (darkHz, sr);
                 const float pan = std::clamp (ph.side * v[spread] * ph.panAmount, -1.0f, 1.0f);
                 dsp::panGains (pan, ph.gainL, ph.gainR);
-                ph.ratio = dsp::MicroShift::centsToRatio (std::max (1.0f, v[detune]) * ph.walk.advance (n, 0.3f));
+                ph.ratio = dsp::MicroShift::centsToRatio (std::max (1.0f, v[detune]) * ph.walk.advance (n, 0.6f));
             }
         }
 
@@ -180,7 +181,7 @@ namespace
             for (int k = 0; k < maxPhantoms; ++k)
             {
                 auto& ph = phantoms[(size_t) k];
-                ph.delaySamples = (int) ((7.0f + 23.0f * dsp::hash01 (k, 0, 0xD06u, salt)) * 0.001f * sr);
+                ph.delaySamples = (int) ((25.0f + 115.0f * dsp::hash01 (k, 0, 0xD06u, salt)) * 0.001f * sr);
                 for (int s = 0; s < 2; ++s)
                     for (int j = 0; j < stages; ++j)
                         ph.allpass[(size_t) s][(size_t) j].set ((int) ((5.0f + 18.0f * dsp::hash01 (k, 10 + s * stages + j, 0xD06u, salt)) * 0.001f * sr), 0.6f);

@@ -55,14 +55,14 @@ namespace
             e.stages = { "fdn" };
             e.presets = {
                 { "Init", {} },
-                { "Sarcophagus Hall", { { "mix", 0.3f }, { "size", 0.85f }, { "decay", 0.7f }, { "damping", 0.45f }, { "shimmer", 0.15f },
-                                        { "predelay", 35.0f }, { "output", 0.7f } } },
-                { "Monolith Glow", { { "mix", 0.3f }, { "shimmer_interval", 1.0f }, { "shimmer", 0.45f }, { "decay", 0.72f },
-                                     { "brightness", 0.2f }, { "output", 0.8f } } },
-                { "Many Minds", { { "mix", 0.3f }, { "shimmer_interval", 3.0f }, { "shimmer", 0.5f }, { "size", 0.8f }, { "decay", 0.75f }, { "output", 0.7f } } },
-                { "Granted", { { "mix", 0.3f }, { "grant", 1.0f }, { "shimmer_interval", 2.0f }, { "output", 2.0f } } },
-                { "Frozen Wish", { { "mix", 0.3f }, { "freeze", 1.0f }, { "shimmer", 0.35f }, { "size", 0.9f }, { "decay", 0.8f }, { "output", 1.0f } } },
-                { "Octave Choir", { { "mix", 0.3f }, { "shimmer", 0.7f }, { "decay", 0.68f }, { "damping", 0.25f }, { "brightness", 0.15f }, { "output", 0.8f } } },
+                { "Sarcophagus Hall", { { "mix", 0.5f }, { "size", 0.85f }, { "decay", 0.75f }, { "damping", 0.45f }, { "shimmer", 0.3f },
+                                        { "predelay", 35.0f }, { "output", 0.8f } } },
+                { "Monolith Glow", { { "mix", 0.5f }, { "shimmer_interval", 1.0f }, { "shimmer", 0.65f }, { "decay", 0.78f },
+                                     { "brightness", 0.2f }, { "output", 1.1f } } },
+                { "Many Minds", { { "mix", 0.5f }, { "shimmer_interval", 3.0f }, { "shimmer", 0.7f }, { "size", 0.8f }, { "decay", 0.8f }, { "output", 0.6f } } },
+                { "Granted", { { "mix", 0.45f }, { "grant", 1.0f }, { "shimmer_interval", 2.0f }, { "output", 2.5f } } },
+                { "Frozen Wish", { { "mix", 0.55f }, { "shimmer", 0.5f }, { "size", 0.95f }, { "decay", 0.97f }, { "damping", 0.2f }, { "output", 0.2f } } },
+                { "Octave Choir", { { "mix", 0.5f }, { "shimmer", 0.85f }, { "decay", 0.75f }, { "damping", 0.25f }, { "brightness", 0.15f }, { "output", 1.1f } } },
             };
             return e;
         }();
@@ -125,12 +125,13 @@ namespace
 
         void process (float* l, float* r, const float*, const float*, int n, host::Guard& guard) override
         {
+            // The wet comes out of the network 4-7 dB under the dry; +4 dB brings it level at MIX 100 %.
             fdn.process (l, r, n, settings);
             const float tone = brightnessNow * 0.7f;
             for (int i = 0; i < n; ++i)
             {
-                l[i] = tilt[0].process (l[i], tone);
-                r[i] = tilt[1].process (r[i], tone);
+                l[i] = tilt[0].process (l[i], tone) * wetMakeup;
+                r[i] = tilt[1].process (r[i], tone) * wetMakeup;
             }
             guard (0, l, r, n);
             const float peak = dsp::blockPeak (l, r, n);
@@ -150,6 +151,7 @@ namespace
         dsp::Fdn::Settings settings;
         std::array<dsp::Tilt, 2> tilt;
         float sr = 48000.0f, brightnessNow = 0.0f, glow = 0.0f, glowCoef = 0.0001f;
+        static constexpr float wetMakeup = 1.5848932f;   // +4 dB
     };
 
     class WishGranterProcessor final : public host::EffectProcessor

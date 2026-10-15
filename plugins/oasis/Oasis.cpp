@@ -41,12 +41,12 @@ namespace
             e.stages = { "declip", "dehiss" };
             e.presets = {
                 { "Init", {} },
-                { "Heal", { { "heal", 1.0f }, { "output", 0.8f } } },
+                { "Heal", { { "heal", 1.0f }, { "output", 0.1f } } },
                 { "Declip Only", { { "declip", 1.0f }, { "dehiss", 0.0f }, { "regen", 0.0f }, { "output", 0.0f } } },
-                { "Dehiss Only", { { "declip", 0.0f }, { "dehiss", 0.9f }, { "regen", 0.0f }, { "output", 0.8f } } },
-                { "Regenerate Air", { { "regen", 0.8f }, { "regen_from", 6000.0f }, { "dehiss", 0.2f }, { "output", 0.3f } } },
+                { "Dehiss Only", { { "declip", 0.0f }, { "dehiss", 0.9f }, { "regen", 0.0f }, { "output", 0.1f } } },
+                { "Regenerate Air", { { "regen", 0.8f }, { "regen_from", 6000.0f }, { "dehiss", 0.2f }, { "output", -0.1f } } },
                 { "Sub Return", { { "sub_regen", 0.7f }, { "dehiss", 0.0f }, { "regen", 0.0f }, { "output", -1.2f } } },
-                { "Full Restoration", { { "heal", 0.7f }, { "sub_regen", 0.3f }, { "regen", 0.4f }, { "output", 0.5f } } },
+                { "Full Restoration", { { "heal", 0.7f }, { "sub_regen", 0.3f }, { "regen", 0.4f }, { "output", -0.1f } } },
             };
             return e;
         }();
@@ -287,8 +287,10 @@ namespace
 
         // Eight bands from a Linkwitz-Riley tree, each made all-pass-equal to the others by the splits above it. Each
         // band's floor is learned (40 dB/s down, 1 dB/s up; digital silence teaches it nothing, or a song that starts
-        // silent would leave it far below the hiss), and below floor + 6..12 dB the band is expanded 1:4, down to
-        // 30 dB x DEHISS. The gain opens in 2 ms, so attacks pass, and closes over 80 ms.
+        // silent would leave it far below the hiss) and never rises above -48 dBFS: hiss lives below that, and a held
+        // chord, whose level never dips, would otherwise be learned as the floor and expanded away. Below floor +
+        // 6..12 dB the band is expanded 1:4, down to 30 dB x DEHISS. The gain opens in 2 ms, so attacks pass, and closes
+        // over 80 ms.
         float dehissBands (Channel& c, float x) noexcept
         {
             float bands[numBands];
@@ -317,7 +319,7 @@ namespace
                 const float level = std::sqrt (env);
                 auto& fl = c.floor[(size_t) k];
                 if (level > silentLevel)
-                    fl = level < fl ? std::max (level, fl * floorFall) : fl * floorRise;
+                    fl = std::min (level < fl ? std::max (level, fl * floorFall) : fl * floorRise, hissCeiling);
                 const float overDb = dsp::gainToDb (level + 1.0e-9f) - (dsp::gainToDb (fl + 1.0e-9f) + offsetDb);
                 const float target = overDb < 0.0f ? std::max (-rangeDb, 3.0f * overDb) : 0.0f;
                 auto& g = c.gainDb[(size_t) k];
@@ -330,7 +332,7 @@ namespace
         std::array<Channel, 2> chan;
         float sr = 48000.0f, peakDecay = 0.9999f, declipNow = 0.5f, thrNow = 0.98f, dehissNow = 0.3f, regenNow = 0.2f, subNow = 0.0f;
         float regenHz = -1.0f, envCoef = 0.002f, floorRise = 1.0f, floorFall = 1.0f, gainOpen = 0.01f, gainClose = 0.0003f;
-        static constexpr float silentLevel = 3.0e-6f;   // -110 dBFS
+        static constexpr float silentLevel = 3.0e-6f, hissCeiling = 0.004f;   // -110 dBFS; -48 dBFS
         float regenEnvCoef = 0.004f, subEnvCoef = 0.001f, treeMix = 0.0f, treeStep = 0.001f;
         int64_t write = 0, corrected = 0;
     };

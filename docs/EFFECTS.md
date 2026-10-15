@@ -58,7 +58,13 @@ NOT ADJUSTED mode (looser look-ahead), code `L6Ph`.
 - **Randomness:** `hash01(bar, step, salt, callsign)`; never a free-running RNG for decisions. Noise generators
   may use the seeded xorshift `Rng` from `Common.h`.
 - **Macros:** one per effect, the faction's accent colour, with the mod wheel added when MIDI is present.
-- **Presets:** six to eight each, named from the lore, loudness-trimmed (`output` set so the RMS on the reference signal stays within 1 dB of the input at the preset's mix). Preset 0 is "Init".
+- **Presets:** six to eight each, named from the lore, loudness-trimmed (`output` set so the RMS on the reference signal stays within 1 dB of the input at the preset's mix). Preset 0 is "Init". Presets whose effect is an event or a course (EMISSION, CONTAGION) or a matched pair (NUMBERS STATION's Complement A and B) keep `output` at 0 dB.
+- **Audible on a mixer track:** every effect at its defaults and in its presets is heard plainly on ordinary program
+  material (drums, a pad, a bass line), not only on signals made for its mechanism; `test/audibility.py` measures it.
+  An effect that needs another track, a siren or a storm to do anything works alone by default.
+- **Transport:** sound an effect makes on its own (a buzzer, number pips, weather beds, a coil whine, Geiger clicks,
+  sparks, a hum) plays while the song plays and fades out over 50 ms when it stops: FL keeps processing a mixer track
+  with the transport stopped.
 - **Guard stages:** each spec names its stages in chain order; the base calls `guard(stage)` after each.
 - **Smoothing:** frequencies and times log-domain; levels linear; choices none.
 
@@ -282,7 +288,9 @@ Stages: `fdn`, `output`.
 resonance; the room "rings"); the matrix is renormalised so the spectral norm stays 1. `levels` 1-5 picks the
 base line lengths from five tables scaled from the Noosphere set (level 1 = 0.35x, level 5 = 1.0x of the small
 set), so stepping it is audible as a staircase, not a slider. `duck`: wet gain = 1 - duck × env, env following the input's level on a -60..0 dB scale (10 ms attack,
-`duck_release` ms release), the claustrophobic pumping of a room that only speaks between hits.
+`duck_release` ms release), the claustrophobic pumping of a room that only speaks between hits. The wet leaves the
+network 7 dB louder than it comes out of it, so at MIX 100 % the room is about level with the dry; the presets mix
+0.5-0.6.
 
 **Parameters**
 
@@ -294,7 +302,7 @@ set), so stepping it is audible as a staircase, not a slider. `duck`: wet gain =
 | `damping` | Damping | 0..1 | 0.5 | % | |
 | `modal` | Modal | 0..1 | 0.3 | % | |
 | `predelay` | Pre-delay | 0..30 | 4 | ms | |
-| `duck` | Duck | 0..1 | 0.4 | % | |
+| `duck` | Duck | 0..1 | 0.2 | % | |
 | `duck_release` | Duck Release | 20..1000 | 180 | ms | log |
 | `tunnel` | Tunnel | Off\|On | Off | | multi-tap mode |
 | `tunnel_length` | Tunnel Length | 0.5..2 | 1 | x | scales the taps |
@@ -377,7 +385,8 @@ Code `L6Co` · Wave 3 · Fx · zero latency · stereo in/out · sidechain option
 as immunity.
 
 **Mechanism.** Every instance is a stalker with a state: Susceptible, Infected, Recovered. Infection enters by
-`role` Patient Zero, by a field source crossing `threshold`, or from peers through the bus. An infected instance
+`role` Patient Zero, by its field source (the track itself by default) loud enough over a whole bar, or from peers
+through the bus, so one CONTAGION on a loud track falls ill by itself. An infected instance
 degrades its audio along a staged symptom curve and publishes viral load; others catch it at bar boundaries with
 a probability set by R0 and their immunity; they recover, stay immune for `wane` bars, then become susceptible.
 
@@ -410,17 +419,19 @@ Stages: `drift`, `choke`, `grit`, `output`.
 | `immunity` | Immunity | 0..1 | 0 | % | the psi-helmet |
 | `incubation` | Incubation | 0..8 | 1 | bars | |
 | `recovery` | Recovery | 1..32 | 8 | bars | |
-| `wane` | Wane | 0..64 | 16 | bars | 0 = permanent immunity |
+| `wane` | Wane | 0..64 | 8 | bars | 0 = permanent immunity |
 | `symptoms` | Symptoms | 0..1 | 1 | % | the macro: scales the whole chain |
 | `stage_curve` | Course | Linear\|Fever\|Collapse | Fever | | symptom ramp shape |
-| `field_source` | Field Source | None\|Input\|Sidechain | None | | |
-| `threshold` | Field Threshold | -60..0 | -24 | dB | |
+| `field_source` | Field Source | None\|Input\|Sidechain | Input | | its mean level over a bar against THRESHOLD; IMMUNITY resists it too |
+| `threshold` | Field Threshold | -60..0 | -30 | dB | |
 | `cure` | Cure | Off\|On | Off | | edge: instance returns to Susceptible now |
 
 **UI:** PEERS infection map (dots per callsign, coloured S/I/R), stage readout, load bar; Oxide theme.
 
-**Presets:** Init, Patient Zero, Yantar Outbreak (R0 4), Slow Zombification (incubation 4), Psi-helmet Issued
-(immunity 0.8), Carrier Only, Pandemic R8.
+**Presets:** Init, Patient Zero, Yantar Outbreak (R0 4, fast course), Slow Zombification (incubation 1, recovery
+16, Collapse), Psi-helmet Issued (immunity 0.15, symptoms 0.45, short bouts), Fever Dream (fast cycling course), Pandemic R8. Each
+works on a single track (the Carrier role, silent by definition, is on ROLE). The course counts the bars played, so a
+pattern loop carries it on; only the transport starting begins a fresh outbreak.
 
 **Tests** (harness `--instances 8`)
 - T1 R0 = 0: no peer ever infected over 64 bars.
@@ -470,8 +481,8 @@ Stages: `program`, `output`.
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `role` | Role | Listener\|Siren | Listener | | |
-| `arm` | Arm | Off\|Countdown\|At Bar | Off | | siren only; Countdown on its edge |
-| `countdown` | Countdown | 1..64 | 8 | bars | |
+| `arm` | Arm | Off\|Countdown\|At Bar | At Bar | | Countdown on its edge |
+| `countdown` | Countdown | 1..64 | 3 | bars | |
 | `lead` | Siren Lead | 1..8 | 2 | bars | |
 | `repeat` | Repeat | Off\|8\|16\|32\|64\|128 | Off | bars | |
 | `severity` | Severity | 0..1 | 0.7 | % | siren's value is published |
@@ -484,7 +495,7 @@ Stages: `program`, `output`.
 **UI:** COUNTDOWN view (bars to F, phase name), PEERS, needle for pressure; the whole panel flashes the accent in
 the P-wave.
 
-**Presets:** Init, Standard Blowout, Shelter in Bunker (shelter 0.9), Open Field (shelter 0, severity 1),
+**Presets:** Init, Standard Blowout, Shelter in Bunker (shelter 0.6: the blowout heard through walls), Open Field (shelter 0, severity 1),
 Periodic Sixteen, Anabiotics, Severe Front (pressure 8 s).
 
 **Tests** (`--instances 4`, instance 0 Siren)
@@ -573,8 +584,8 @@ velocity at control rate. Nothing else is needed: 16 steered chorus voices.
   leader's delay); alignment `k_a × (mean v - v_i)`; restlessness `(1 - z) × max_detune × walk_i`, each agent's own
   slow random walk (0.4-1 Hz); separation `-30 k_s × sign(d_i - d_j) × (1 - |d_i - d_j| / sep)` from every j closer
   than `sep`. Pan: `w_i` relaxes toward `-k_c y_i / 2`.
-- clamp `|v_i| ≤ max_detune`; reflect at `d_min` 2 ms and `d_max` 60 ms
-- zealotry z: `k_c = 0.05 + 5.45z`, `k_a = 0.5z`, `k_s = 0.2 + 2(1 - z)`; `sep = 1.5 ms`. (At z = 0 only a faint pull
+- clamp `|v_i| ≤ max_detune`; reflect at `d_min` 2 ms and `d_max` 80 ms
+- zealotry z: `k_c = 0.05 + 5.45z³`, `k_a = 0.5z²`, `k_s = 0.2 + 2(1 - z)`; `sep = 4 ms` (a 12-voice flock spans tens of milliseconds: a crowd, not a doubling). (At z = 0 only a faint pull
   keeps the crowd inside the line: a cohesion of 0.5 and an alignment that did not fade cancelled most of the
   restlessness, about 30 % of MAX DETUNE.)
 - predator: on a transient of the input or the sidechain (dual envelope), `v_i += fear × hash-signed max_detune`,
@@ -590,13 +601,13 @@ in delay × pan space).
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `agents` | Agents | 2..16 | 12 | | integer |
-| `zealotry` | Zealotry | 0..1 | 0.5 | % | the macro |
-| `max_detune` | Max Detune | 0..100 | 25 | ct | |
-| `leader_delay` | Leader | 5..40 | 12 | ms | |
+| `zealotry` | Zealotry | 0..1 | 0.35 | % | the macro |
+| `max_detune` | Max Detune | 0..100 | 40 | ct | |
+| `leader_delay` | Leader | 5..40 | 20 | ms | |
 | `spread` | Spread | 0..1 | 0.8 | % | pan range |
 | `fear` | Fear | 0..1 | 0.5 | % | predator scatter |
 | `predator_source` | Predator | Off\|Input\|Sidechain | Input | | |
-| `chant` | Chant | 0..1 | 0 | % | vowel O formant bank on the flock sum |
+| `chant` | Chant | 0..1 | 0.25 | % | vowel O formant bank on the flock sum |
 
 **Presets:** Init, Chant, Scattered Crowd (zealotry 0), Procession, Under Fire (fear 1), Monolith Wall (16 agents,
 zealotry 1), Whisper Congregation.
@@ -736,7 +747,7 @@ depth, Doppler-shifted by radial velocity. RAGE adds telekinetic lifts.
   direction × 6 m/s`; capture grain `[t0, t0 + 80 ms]`.
 - integrate at control rate: `v_y -= gravity dt`; walls at x = ±1 and z in [0, 1] reflect with `bounce`;
   floor at y = 0 reflects with `bounce`, and an impact with `|v_y| > 0.3 m/s` replays the grain at level
-  `min(1, |v_y| / 6)`; objects die after `life` s or when `|v| < 0.2` on the floor.
+  `min(1.2, |v_y| / 3.5)`, near the hit's own level; objects die after `life` s or when `|v| < 0.2` on the floor.
 - rendering per replay: constant-power pan from x; depth: low-pass `20 kHz → 2 kHz` and level `1 / (1 + 3z)`;
   Doppler ratio `1 - doppler × v_radial / 40` (exaggerated speed of sound), applied as the grain's playback
   ratio; height adds a +3 dB shelf at 6 kHz × y/3.
@@ -749,12 +760,12 @@ Stages: `objects`, `output`.
 
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
-| `throw` | Throw | 0..1 | 0.6 | % | initial speed |
+| `throw` | Throw | 0..1 | 0.8 | % | initial speed |
 | `gravity` | Gravity | 1..30 | 9.8 | m/s² | |
-| `bounce` | Bounce | 0..0.95 | 0.6 | % | restitution |
-| `life` | Life | 0.5..8 | 3 | s | |
-| `objects` | Objects | 1..12 | 6 | | integer |
-| `doppler` | Doppler | 0..1 | 0.5 | % | |
+| `bounce` | Bounce | 0..0.95 | 0.7 | % | restitution |
+| `life` | Life | 0.5..8 | 4 | s | |
+| `objects` | Objects | 1..12 | 8 | | integer |
+| `doppler` | Doppler | 0..1 | 0.8 | % | |
 | `depth_filter` | Depth | 0..1 | 0.6 | % | distance filtering strength |
 | `rage` | Rage | 0..1 | 0 | % | the macro: telekinetic lifts |
 | `sensitivity` | Sensitivity | 0..1 | 0.5 | % | |
@@ -852,11 +863,11 @@ Stages: `rail`, `output`.
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `power` | Power | 0..24 | 12 | dB | the macro |
-| `recharge` | Recharge | 0.1..10 | 2 | s | time to full charge, log |
-| `quiet_thr` | Quiet | -80..-20 | -50 | dB | |
-| `pulse` | Pulse | 5..60 | 20 | ms | boost decay |
+| `recharge` | Recharge | 0.1..10 | 0.5 | s | time to full charge, log |
+| `quiet_thr` | Quiet | -48..-6 | -18 | dB | below the track's recent peak (instant attack, 1.5 s release); silence under -70 dBFS always counts |
+| `pulse` | Pulse | 5..120 | 40 | ms | boost decay |
 | `residual` | Residual | 0..0.5 | 0.1 | % | charge left after a shot |
-| `whine` | Coil Whine | 0..1 | 0.2 | % | |
+| `whine` | Coil Whine | 0..1 | 0.3 | % | at full charge, WHINE x 0.6 of the track's level (a slow follower; at least -30 dBFS) |
 | `flash` | Rail Flash | 0..1 | 0.2 | % | |
 | `sensitivity` | Sensitivity | 0..1 | 0.5 | % | |
 
@@ -881,9 +892,11 @@ doubles that live only in sustained material and disappear on attacks.
 
 **Signal flow**
 ```
-in -> N phantoms: Schroeder allpass chain (4 stages, 5-23 ms, hashed) + micro delay 7-30 ms + detune walk ±DETUNE
+in -> N phantoms: Schroeder allpass chain (4 stages, 5-23 ms, hashed) + delay 25-140 ms + detune walk ±DETUNE
       panned around SPREAD, low-passed by DARKEN
-   -> phantom gain = PHANTOM x (1 - attack) with BLOOM release, attack = fast env / slow env clipped, 60 ms hold
+   -> phantom gain = PHANTOM x 1.1 / sqrt(PACK) x (1 - attack) with BLOOM release, attack = fast env / slow env
+      clipped, 25 ms hold (a pack heard as a pack: far enough behind the track not to fuse with it, and back between
+      the hits of a loop)
    -> + dry -> mix
 ```
 Stages: `pack`, `output`.
@@ -896,10 +909,10 @@ Stages: `pack`, `output`.
 |---|---|---|---|---|---|
 | `pack` | Pack | 1..6 | 3 | | integer |
 | `phantom` | Phantom | 0..1 | 0.6 | % | the macro |
-| `bloom` | Bloom | 50..2000 | 400 | ms | return time, log |
+| `bloom` | Bloom | 50..2000 | 180 | ms | return time, log |
 | `vanish` | Vanish | 5..200 | 30 | ms | how fast they disappear |
 | `spread` | Spread | 0..1 | 0.8 | % | |
-| `detune` | Detune | 0..20 | 5 | ct | random walk range |
+| `detune` | Detune | 0..30 | 12 | ct | random walk range |
 | `darken` | Darken | 0..1 | 0.3 | % | |
 
 **Presets:** Init, Pack of Three, Six Phantoms, Vanish Fast, Slow Bloom, Dark Pack, Wide Illusion.
@@ -1002,7 +1015,8 @@ Stages: `fdn`, `output`.
 | `grant` | Grant | 0..1 | 0 | % | macro: +0.4 shimmer, +0.15 mix, -0.2 damping, +0.1 size, +brightness |
 
 **Presets:** Init, Sarcophagus Hall, Monolith Glow (fifth), Many Minds (major), Granted (grant 1), Frozen Wish
-(freeze), Octave Choir.
+(a near-endless wish that still takes input; FREEZE itself stays a control: frozen at load it would hold silence),
+Octave Choir. Preset mixes 0.45-0.55; the wet leaves the network 4 dB louder so MIX 100 % is level with the dry.
 
 **Tests**
 - T1 every interval at shimmer 1, decay 1: no 1 s window louder than the one before; -95 dB within 30 s
@@ -1092,8 +1106,8 @@ noise. The learned state saves with the project.
   +12 dB at the learned pitches), so the learned harmony rings inside the reverb. (Fed from the network's own
   output instead, the combs formed a second loop that could oscillate.)
 - ABSORB On: `η = 0`, forgetting stopped, histogram frozen; the input still plays into the network. TRANSFER: when
-  the input is silent for 2 s, low-level noise (-48 dBFS) passes through the combs into the network so the learned
-  harmony hums; level `transfer`.
+  the input is silent for 2 s while the song plays, low-level noise (-48 dBFS) passes through the combs into the
+  network so the learned harmony hums; level `transfer`.
 - Blob: `M` (64 floats), `P` (12 floats), version 1.
 Stages: `fdn`, `output`.
 
@@ -1219,6 +1233,8 @@ interleave in frequency and time.
   off, 400 ms between groups, level `numbers_level`, one group per bar when `numbers` is On.
 - buzzer: 25 Hz pulse train with harmonics through a 300-3000 Hz band-pass, 0.8 s on and 0.45 s off (1.25 s
   period), pitch offset from the key, level `buzzer_level`.
+- the pips and the buzzer are on the air while the song plays and fade out when it stops; the hop filter keeps
+  working on the track's own audio.
 Stages: `hop`, `carrier`, `output`.
 
 **Core modules:** `SVF`, `FrequencyShifter`, `Hash`, `Transport`.
@@ -1314,8 +1330,11 @@ weather state (AUTO: hashed Markov chain every FRONT RATE bars; or the WEATHER c
    PRESSURE -> FOG low-pass (20 kHz x (0.1 + 0.9 x clearness)) and a gentle tilt
    RAIN -> Poisson drops (2 ms clicks through random 2-6 kHz band-passes) + hiss bed, density x rain
    WIND -> pan motion (0.05-0.3 Hz) and Ensemble depth x wind + high-passed whoosh noise modulated by slow noise
-   LIGHTNING -> Poisson flashes (storm x 0.2/s): +6 dB high shelf for 80 ms; RUMBLE after DISTANCE / 343 m/s: low noise burst 1-3 s (every flash queues its own;
-      up to four overlap)
+   LIGHTNING -> strikes at LIGHTNING x (0.25 + 0.75 storm) a second, in any weather: a crack (high-passed noise,
+      20 ms decay, louder the closer) and a +6 dB high shelf above 5 kHz for 120 ms; RUMBLE after DISTANCE / 343 m/s:
+      rolling brown noise under 180 Hz for about 3 s, quieter with distance (every flash queues its own; four overlap)
+   the weather's sounds (drops, hiss, whoosh, crack, rumble, hum, siren) follow the track's recent peak (instant
+      attack, 2 s release, at least -30 dBFS) and play while the song plays
    NIGHT -> -3 dB above 4 kHz at midnight, 0 at noon; EMISSION SKY -> tilt up, 50 Hz hum, distant siren bed
    -> mix
 ```
@@ -1328,18 +1347,19 @@ Stages: `sky`, `output`.
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `weather` | Weather | Auto\|Clear\|Overcast\|Rain\|Storm\|Emission Sky | Auto | | |
-| `front_rate` | Front Rate | BARS | 16 | bars | Auto changes |
+| `front_rate` | Front Rate | BARS | 8 | bars | Auto changes; the first front brings rain |
 | `day_length` | Day Length | 1..60 | 24 | min | |
 | `time_of_day` | Time of Day | 0..24 | 12 | h | follows the clock while playing; the knob otherwise |
 | `fog` | Fog | 0..1 | 0.5 | % | |
-| `rain` | Rain | 0..1 | 0.3 | % | |
+| `rain` | Rain | 0..1 | 0.5 | % | |
 | `wind` | Wind | 0..1 | 0.3 | % | |
-| `lightning` | Lightning | 0..1 | 0.5 | % | |
-| `rumble` | Rumble | 0..1 | 0.5 | % | |
-| `distance` | Storm Distance | 0.5..10 | 3 | km | rumble delay = distance / 0.343 s |
+| `lightning` | Lightning | 0..1 | 0.6 | % | |
+| `rumble` | Rumble | 0..1 | 0.6 | % | |
+| `distance` | Storm Distance | 0.5..10 | 1.2 | km | rumble delay = distance / 0.343 s |
 | `front` | Front | 0..1 | 0 | % | macro: pushes the state toward storm |
 
-**Presets:** Init, Morning Clear, Overcast Swamp, Rain at Yantar, Storm Front, Night Watch, Emission Sky.
+**Presets:** Init, Morning Clear (a breeze, light fog, rare heat lightning), Overcast Swamp, Rain at Yantar, Storm Front,
+Night Watch, Emission Sky.
 
 **Tests**
 - T1 lightning rumble arrives `distance / 343` s after the flash within 5 %.

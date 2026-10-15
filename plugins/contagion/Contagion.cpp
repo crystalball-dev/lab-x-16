@@ -1,12 +1,14 @@
 // CONTAGION // ЗАРАЖЕНИЕ — epidemiology, the SIR compartment model. Zombified stalkers spreading out of Yantar:
 // "Everyone who is affected by it loses his mind and turns into a zombie" (Sakharov); the psi-helmet as immunity.
-// Every instance is a stalker: Susceptible, Infected or Recovered. Infection enters by ROLE Patient Zero, by a field
-// source crossing THRESHOLD for a whole bar, or from infected peers on the Zone Bus; an infected instance degrades its
-// audio through incubation, fever and zombification, then recovers, stays immune for WANE bars and can catch it again.
+// Every instance is a stalker: Susceptible, Infected or Recovered. Infection enters by ROLE Patient Zero, by the field
+// source (the track itself by default) loud enough over a whole bar, or from infected peers on the Zone Bus; an infected
+// instance degrades its audio through incubation, fever and zombification, then recovers, stays immune for WANE bars and
+// can catch it again.
 //
 // Determinism: decisions happen only at bar boundaries, from the loads every peer published for the previous bar
 // (one load per bar parity on the bus), with hash01 rolls on the bar and the callsign. Every instance starts healthy
-// when the transport starts, so an FL render of the song repeats the outbreak exactly.
+// when the transport starts, so an FL render of the song repeats the outbreak exactly. The course counts the bars
+// played, so a looping pattern carries it on instead of starting it over.
 
 #include "core/host/EffectProcessor.h"
 #include "core/dsp/Crush.h"
@@ -48,21 +50,21 @@ namespace
                 { "immunity",     "Immunity",        Kind::real,    0.0f,   1.0f,  0.0f,   0.0f, Smooth::none,   "%",  "" },
                 { "incubation",   "Incubation",      Kind::integer, 0.0f,   8.0f,  1.0f,   0.0f, Smooth::none,   "",   "" },
                 { "recovery",     "Recovery",        Kind::integer, 1.0f,   32.0f, 8.0f,   0.0f, Smooth::none,   "",   "" },
-                { "wane",         "Wane",            Kind::integer, 0.0f,   64.0f, 16.0f,  0.0f, Smooth::none,   "",   "" },
+                { "wane",         "Wane",            Kind::integer, 0.0f,   64.0f, 8.0f,   0.0f, Smooth::none,   "",   "" },
                 { "symptoms",     "Symptoms",        Kind::real,    0.0f,   1.0f,  1.0f,   0.0f, Smooth::linear, "%",  "" },
                 { "stage_curve",  "Course",          Kind::choice,  0.0f,   2.0f,  1.0f,   0.0f, Smooth::none,   "",   "Linear|Fever|Collapse" },
-                { "field_source", "Field Source",    Kind::choice,  0.0f,   2.0f,  0.0f,   0.0f, Smooth::none,   "",   "None|Input|Sidechain" },
-                { "threshold",    "Field Threshold", Kind::real,    -60.0f, 0.0f,  -24.0f, 0.0f, Smooth::none,   "dB", "" },
+                { "field_source", "Field Source",    Kind::choice,  0.0f,   2.0f,  1.0f,   0.0f, Smooth::none,   "",   "None|Input|Sidechain" },
+                { "threshold",    "Field Threshold", Kind::real,    -60.0f, 0.0f,  -30.0f, 0.0f, Smooth::none,   "dB", "" },
                 { "cure",         "Cure",            Kind::choice,  0.0f,   1.0f,  0.0f,   0.0f, Smooth::none,   "",   "Off|On" },
             };
             e.stages = { "drift", "choke", "grit" };
             e.presets = {
                 { "Init", {} },
                 { "Patient Zero", { { "role", 1.0f } } },
-                { "Yantar Outbreak", { { "r0", 4.0f } } },
-                { "Slow Zombification", { { "incubation", 4.0f }, { "recovery", 16.0f }, { "stage_curve", 2.0f } } },
-                { "Psi-helmet Issued", { { "immunity", 0.8f } } },
-                { "Carrier Only", { { "role", 2.0f } } },
+                { "Yantar Outbreak", { { "r0", 4.0f }, { "incubation", 0.0f }, { "recovery", 6.0f } } },
+                { "Slow Zombification", { { "incubation", 1.0f }, { "recovery", 16.0f }, { "stage_curve", 2.0f } } },
+                { "Psi-helmet Issued", { { "immunity", 0.15f }, { "symptoms", 0.45f }, { "recovery", 4.0f }, { "incubation", 0.0f } } },
+                { "Fever Dream", { { "incubation", 0.0f }, { "recovery", 4.0f }, { "wane", 2.0f }, { "stage_curve", 0.0f } } },
                 { "Pandemic R8", { { "r0", 8.0f }, { "incubation", 0.0f }, { "wane", 0.0f } } },
             };
             return e;
@@ -115,12 +117,16 @@ namespace
             const int roleNow = (int) std::lround (v[role]);
             const bool cureNow = v[cure] > 0.5f;
 
-            // The transport starting (or jumping back) begins a fresh outbreak: everyone healthy.
-            if (t.playing && (! wasPlaying || t.ppq < lastQ - 0.5))
+            // The transport starting begins a fresh outbreak: everyone healthy. (A loop's jump back does not: the course
+            // goes on through it.)
+            if (t.playing && ! wasPlaying)
             {
                 state = roleNow == carrier ? carrying : susceptible;
                 lastBar = std::numeric_limits<int64_t>::min();
-                fieldBarMin = 1000.0f;
+                barsPlayed = 0;
+                eventBar = 0;
+                fieldSum = 0.0;
+                fieldCount = 0;
                 infectNow = roleNow == patientZero;
             }
             if (roleNow == patientZero && lastRole != patientZero)
@@ -144,10 +150,13 @@ namespace
                 const int64_t bar = t.bar();
                 if (bar != lastBar)
                 {
+                    if (lastBar != std::numeric_limits<int64_t>::min())
+                        ++barsPlayed;
                     boundary (bar, v, ctx);
                     lastBar = bar;
                 }
-                barsSince = t.ppq / t.quartersPerBar() - (double) eventBar;
+                const double intoBar = t.ppq / t.quartersPerBar();
+                barsSince = (double) (barsPlayed - eventBar) + (intoBar - std::floor (intoBar));
             }
 
             // Symptoms follow the course continuously through the bar.
@@ -173,7 +182,8 @@ namespace
                     fe = field.processStereo (l[i], r[i]);
                 else if (source == 2 && sideActive)
                     fe = field.processStereo (sideL[i], sideR[i]);
-                fieldBarMin = std::min (fieldBarMin, dsp::gainToDb (fe + 1.0e-9f));
+                fieldSum += (double) fe * (double) fe;
+                ++fieldCount;
             }
 
             // DRIFT: a wandering delay (wow); at no symptoms the delay is exactly 0 and the sound untouched.
@@ -242,12 +252,12 @@ namespace
         {
             const int inc = (int) std::lround (v[incubation]), rec = std::max (1, (int) std::lround (v[recovery]));
             const int waneBars = (int) std::lround (v[wane]);
-            if (state == infected && bar - eventBar >= inc + rec)
+            if (state == infected && barsPlayed - eventBar >= inc + rec)
             {
                 state = recovered;
-                eventBar = bar;
+                eventBar = barsPlayed;
             }
-            else if (state == recovered && waneBars > 0 && bar - eventBar >= waneBars)
+            else if (state == recovered && waneBars > 0 && barsPlayed - eventBar >= waneBars)
                 state = susceptible;
 
             if (state == susceptible)
@@ -269,17 +279,21 @@ namespace
                     }
                 }
                 const float pInfect = (1.0f - v[immunity]) * (1.0f - std::exp (-(v[r0] / (float) rec) * exposure));
+                // The field: its mean level over the bar just played above THRESHOLD; IMMUNITY resists it too.
+                const double fieldDb = fieldCount > 0 ? 10.0 * std::log10 (fieldSum / (double) fieldCount + 1.0e-12) : -120.0;
                 const bool fromField = (int) std::lround (v[fieldSource]) != 0 && lastBar != std::numeric_limits<int64_t>::min()
-                                       && fieldBarMin > v[threshold];
+                                       && fieldDb > (double) v[threshold]
+                                       && dsp::hash01 (bar, 1, 0x1F3C7u, ctx.callsign) >= v[immunity];
                 if (infectNow || fromField || (pInfect > 0.0f && dsp::hash01 (bar, 0, 0x1F3C7u, ctx.callsign) < pInfect))
                 {
                     state = infected;
-                    eventBar = bar;
+                    eventBar = barsPlayed;
                     ++infections;
                 }
             }
             infectNow = false;
-            fieldBarMin = 1000.0f;
+            fieldSum = 0.0;
+            fieldCount = 0;
             incubationBars = inc;
             recoveryBars = rec;
             curve = (int) std::lround (v[stageCurve]);
@@ -290,7 +304,7 @@ namespace
                 loadNow = 1.0f;
             else if (state == infected)
             {
-                const int64_t t = bar - eventBar;
+                const int64_t t = barsPlayed - eventBar;
                 if (t < inc)
                     loadNow = 0.5f * (float) t / (float) std::max (1, inc);
                 else if ((double) t < inc + 0.6 * rec)
@@ -337,7 +351,9 @@ namespace
         dsp::Programmer walk;
         const float* p = nullptr;
         float sr = 48000.0f, sNow = 0.0f, target = 0.0f, symptomCoef = 0.001f, amplitude = 0.0f, delayNow = 0.0f, wobPrev = 0.0f;
-        float loadNow = 0.0f, fieldBarMin = 1000.0f, bitsNow = 16.0f, centsNow = 0.0f, maxCents = 0.0f;
+        float loadNow = 0.0f, bitsNow = 16.0f, centsNow = 0.0f, maxCents = 0.0f;
+        double fieldSum = 0.0;
+        int64_t fieldCount = 0, barsPlayed = 0;
         int state = susceptible, lastRole = stalker, incubationBars = 1, recoveryBars = 8, curve = 1;
         int64_t lastBar = std::numeric_limits<int64_t>::min(), eventBar = 0, infections = 0;
         double barsSince = 0.0, lastQ = 0.0;
