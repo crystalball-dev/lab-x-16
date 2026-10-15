@@ -123,3 +123,47 @@ lab_add_effect(NAME Rainbow SLUG rainbow PRODUCT "RAINBOW" CODE L6Rb VERSION 0.1
                SOURCES "${CMAKE_SOURCE_DIR}/plugins/rainbow/Rainbow.cpp")
 lab_add_effect(NAME WishGranter SLUG wish_granter PRODUCT "WISH GRANTER" CODE L6Wg VERSION 0.1.0 CATEGORIES Fx Reverb
                SOURCES "${CMAKE_SOURCE_DIR}/plugins/wish_granter/WishGranter.cpp")
+
+# Wave 2
+lab_add_effect(NAME PsyField SLUG psy_field PRODUCT "PSY-FIELD" CODE L6Ps VERSION 0.1.0 CATEGORIES Fx Modulation MIDI
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/psy_field/PsyField.cpp")
+lab_add_effect(NAME Anomaly SLUG anomaly PRODUCT "ANOMALY" CODE L6An VERSION 0.1.0 CATEGORIES Fx Delay MIDI
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/anomaly/Anomaly.cpp")
+lab_add_effect(NAME Apparition SLUG apparition PRODUCT "APPARITION" CODE L6Ap VERSION 0.1.0 CATEGORIES Fx Delay
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/apparition/Apparition.cpp")
+lab_add_effect(NAME Carrier SLUG carrier PRODUCT "CARRIER" CODE L6Cr VERSION 0.1.0 CATEGORIES Fx Filter MIDI
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/carrier/Carrier.cpp")
+lab_add_effect(NAME Oasis SLUG oasis PRODUCT "OASIS" CODE L6Oa VERSION 0.1.0 CATEGORIES Fx Restoration
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/oasis/Oasis.cpp")
+lab_add_effect(NAME Gauss SLUG gauss PRODUCT "GAUSS" CODE L6Ga VERSION 0.1.0 CATEGORIES Fx Dynamics
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/gauss/Gauss.cpp")
+lab_add_effect(NAME PsyDog SLUG psy_dog PRODUCT "PSY-DOG" CODE L6Pd VERSION 0.1.0 CATEGORIES Fx Spatial
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/psy_dog/PsyDog.cpp")
+
+# Wave 3: the Zone Bus clients
+lab_add_effect(NAME Emission SLUG emission PRODUCT "EMISSION" CODE L6Em VERSION 0.1.0 CATEGORIES Fx
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/emission/Emission.cpp")
+lab_add_effect(NAME Contagion SLUG contagion PRODUCT "CONTAGION" CODE L6Co VERSION 0.1.0 CATEGORIES Fx
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/contagion/Contagion.cpp")
+
+# Wave 4
+lab_add_effect(NAME HundredRads SLUG hundred_rads PRODUCT "100 RADS" CODE L6Rd VERSION 0.1.0 CATEGORIES Fx Dynamics
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/hundred_rads/HundredRads.cpp")
+lab_add_effect(NAME CConsciousness SLUG c_consciousness PRODUCT "C-CONSCIOUSNESS" CODE L6Cc VERSION 0.1.0 CATEGORIES Fx Reverb
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/c_consciousness/CConsciousness.cpp")
+lab_add_effect(NAME Artifact SLUG artifact PRODUCT "ARTIFACT" CODE L6Ar VERSION 0.1.0 CATEGORIES Fx Filter
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/artifact/Artifact.cpp")
+lab_add_effect(NAME Snork SLUG snork PRODUCT "SNORK" CODE L6Sn VERSION 0.1.0 CATEGORIES Fx
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/snork/Snork.cpp")
+
+# Wave 5
+lab_add_effect(NAME Zealots SLUG zealots PRODUCT "ZEALOTS" CODE L6Ze VERSION 0.1.0 CATEGORIES Fx Modulation
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/zealots/Zealots.cpp")
+lab_add_effect(NAME NumbersStation SLUG numbers_station PRODUCT "NUMBERS STATION" CODE L6Ns VERSION 0.1.0 CATEGORIES Fx Filter
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/numbers_station/NumbersStation.cpp")
+lab_add_effect(NAME Sarcophagus SLUG sarcophagus PRODUCT "SARCOPHAGUS" CODE L6Sa VERSION 0.1.0 CATEGORIES Fx Delay
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/sarcophagus/Sarcophagus.cpp")
+lab_add_effect(NAME Poltergeist SLUG poltergeist PRODUCT "POLTERGEIST" CODE L6Po VERSION 0.1.0 CATEGORIES Fx Spatial
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/poltergeist/Poltergeist.cpp")
+lab_add_effect(NAME ClearSky SLUG clear_sky PRODUCT "CLEAR SKY" CODE L6Cs VERSION 0.1.0 CATEGORIES Fx Modulation
+               SOURCES "${CMAKE_SOURCE_DIR}/plugins/clear_sky/ClearSky.cpp")

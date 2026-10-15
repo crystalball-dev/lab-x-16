@@ -29,8 +29,9 @@ def main():
     _, ref = h.render("trim_input", signal + rt.sets("bypass=1"))
     ref_db = float(ref["rms_db"])
     trims = {}
+    untrimmed = rt.SPEC.get(args.plugin, {}).get("untrimmed", [])
     for p, name in enumerate(presets):
-        if p == 0:
+        if p == 0 or name in untrimmed:
             continue
         _, st = h.render(f"trim_preset{p}", signal + ["--program", str(p)] + rt.sets("output=0"))
         trims[name] = round(ref_db - float(st["rms_db"]), 1) + 0.0   # + 0.0: no "-0.0"

@@ -39,6 +39,11 @@ namespace lab::dsp
             float ratios[3] { 2.0f, 1.5f, 1.26f };
             float shimmer = 0.0f;                // 0..1
             bool freeze = false;
+            // C-CONSCIOUSNESS: a mixing matrix of its own (8 x 8, row-major) instead of the Hadamard; the caller keeps
+            // its spectral norm at or below 1. Null (the default) is the Hadamard, as SILO and WISH GRANTER use.
+            const float* matrix = nullptr;
+            // Extra signal added to the network's input before the input gain (C-CONSCIOUSNESS's harmony combs).
+            const float* extraIn = nullptr;      // n samples, mono, or null
         };
 
         void prepare (float sr, float maxScale = 2.6f, float maxPredelaySeconds = 0.26f)
@@ -69,6 +74,7 @@ namespace lab::dsp
             for (auto& line : lines)
                 line.reset();
             lineLp.fill (0.0f);
+            lastOut.fill (0.0f);
             pre.reset();
             hpL.reset();
             hpR.reset();
@@ -95,6 +101,9 @@ namespace lab::dsp
 
         // 0 live .. 1 fully frozen.
         float frozenAmount() const noexcept { return frozen; }
+
+        // The eight line outputs of the last sample processed (C-CONSCIOUSNESS learns from their correlations).
+        const std::array<float, numLines>& lineOutputs() const noexcept { return lastOut; }
 
         void process (float* left, float* right, int n, const Settings& s) noexcept
         {
@@ -164,9 +173,25 @@ namespace lab::dsp
                     const float g = gains[k] + (1.0f - gains[k]) * frozen;
                     f[k] = h[k] = lineLp[(size_t) k] * g;
                 }
-                hadamard (h);
+                if (s.matrix != nullptr)
+                {
+                    float m[numLines];
+                    for (int r = 0; r < numLines; ++r)
+                    {
+                        float acc = 0.0f;
+                        for (int c = 0; c < numLines; ++c)
+                            acc += s.matrix[r * numLines + c] * h[c];
+                        m[r] = acc;
+                    }
+                    for (int k = 0; k < numLines; ++k)
+                        h[k] = m[k];
+                }
+                else
+                    hadamard (h);
                 for (int k = 0; k < numLines; ++k)
                     f[k] = (1.0f - modal) * h[k] + modal * f[k];
+                lastOut[0] = o[0]; lastOut[1] = o[1]; lastOut[2] = o[2]; lastOut[3] = o[3];
+                lastOut[4] = o[4]; lastOut[5] = o[5]; lastOut[6] = o[6]; lastOut[7] = o[7];
 
                 float shimmerIn = 0.0f;
                 if (headCount > 0)
@@ -192,8 +217,9 @@ namespace lab::dsp
                 float lp, bp, hl, hr;
                 hpL.process (pl, lp, bp, hl);
                 hpR.process (pr, lp, bp, hr);
-                const float inL = (hl + shimmerIn) * inputGain * live;
-                const float inR = (hr + shimmerIn) * inputGain * live;
+                const float extra = s.extraIn != nullptr ? s.extraIn[i] : 0.0f;
+                const float inL = (hl + shimmerIn + extra) * inputGain * live;
+                const float inR = (hr + shimmerIn + extra) * inputGain * live;
                 for (int k = 0; k < numLines; ++k)
                     lines[(size_t) k].push ((k & 1) == 0 ? f[k] + inL : f[k] + inR);
 
@@ -220,7 +246,7 @@ namespace lab::dsp
         }
 
         std::array<DelayLine, numLines> lines {};
-        std::array<float, numLines> lineLp {};
+        std::array<float, numLines> lineLp {}, lastOut {};
         StereoDelayLine pre;
         SVF hpL, hpR;
         std::array<MicroShift, 3> heads;

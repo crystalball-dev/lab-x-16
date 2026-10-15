@@ -25,6 +25,8 @@ BUILD = ROOT / "build"
 OUT = ROOT / "test" / "out"
 sys.path.insert(0, str(ROOT / "test" / "python"))
 import labanalyze as an  # noqa: E402
+from labtest import sets, fixture, mono_of  # noqa: E402,F401
+import effect_tests  # noqa: E402
 
 STAT = re.compile(r'(\w+)=("([^"]*)"|\S+)')
 PLUGINVAL = shutil.which("pluginval") or r"F:\_DEV\tools\pluginval\pluginval.exe"
@@ -39,13 +41,6 @@ def effects():
         if not slug.startswith("stub"):
             found[slug] = {"name": name, "product": product, "code": code, "version": version}
     return found
-
-
-def sets(*assignments):
-    out = []
-    for a in assignments:
-        out += ["--set", a]
-    return out
 
 
 class Harness:
@@ -77,37 +72,6 @@ class Harness:
         proc = subprocess.run([str(self.exe), "--list-params"], capture_output=True, text=True, encoding="utf-8")
         presets = re.findall(r'^preset (\d+) "([^"]*)"', proc.stdout, re.M)
         return [name for _, name in presets]
-
-
-def fixture(name, sr, seconds, parts):
-    """A WAV in test/out/fixtures: parts are (start, end, kind, freq, level_db) with kind 'sine' or 'noise'."""
-    path = OUT / "fixtures" / f"{name}.wav"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    n = int(seconds * sr)
-    x = np.zeros(n)
-    rng = np.random.default_rng(12345)
-    for start, end, kind, freq, level in parts:
-        a, b = int(start * sr), int(end * sr)
-        amp = 10 ** (level / 20)
-        if kind == "sine":
-            t = np.arange(b - a) / sr
-            seg = np.sin(2 * math.pi * freq * t)
-        else:
-            seg = rng.uniform(-1.0, 1.0, b - a) * math.sqrt(3.0)   # white noise; level_db is its RMS
-        ramp = min(int(0.002 * sr), (b - a) // 2)   # 2 ms edges: the burst itself must not click
-        if ramp > 0:
-            w = np.ones(b - a)
-            w[:ramp] = np.linspace(0, 1, ramp)
-            w[-ramp:] = np.linspace(1, 0, ramp)
-            seg = seg * w
-        x[a:b] += amp * seg
-    sf.write(str(path), np.stack([x, x], axis=1), sr, subtype="FLOAT")
-    return path
-
-
-def mono_of(wav):
-    data, sr = an.load(wav)
-    return an.mono(data), data, sr
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -377,6 +341,7 @@ SPEC = {
     "wish_granter": {"stages": ["fdn"], "panels": [], "transparent": [("dry", sets("mix=0")), ("frozen", sets("mix=0", "freeze=1"))],
                      "tests": wish_granter_tests},
 }
+SPEC.update(effect_tests.spec())
 
 
 def common_tests(h, spec, presets, record, want, args):
@@ -483,15 +448,15 @@ def common_tests(h, spec, presets, record, want, args):
                {"size": st.get("size"), "panels": titles, "missing": missing})
 
 
-def loudness_test(h, presets, record, want):
+def loudness_test(h, spec, presets, record, want):
     if not want("P1"):
         return
     _, ref = h.render("p1_input", ["--signal", "drums:120", "--seconds", "8"] + sets("bypass=1"))
     ref_db = float(ref.get("rms_db", "-100"))
     rows, ok = {}, True
     for p, name in enumerate(presets):
-        if p == 0:
-            continue   # Init is the defaults, untrimmed
+        if p == 0 or name in spec.get("untrimmed", []):
+            continue   # Init is the defaults; an untrimmed preset keeps OUTPUT 0 dB on purpose (docs/DESIGN.md)
         _, st = h.render(f"p1_preset{p}", ["--signal", "drums:120", "--seconds", "8", "--program", str(p)])
         diff = float(st.get("rms_db", "-100")) - ref_db
         rows[name] = round(diff, 2)
@@ -501,6 +466,9 @@ def loudness_test(h, presets, record, want):
 
 
 def main():
+    # The panel titles are bilingual; a redirected stdout would otherwise use the ANSI code page and fail on Cyrillic.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--plugin", action="append", default=[])
     parser.add_argument("--all", action="store_true")
@@ -540,7 +508,7 @@ def main():
 
         common_tests(h, SPEC[slug], presets, record, want, args)
         SPEC[slug]["tests"](h, record, want)
-        loudness_test(h, presets, record, want)
+        loudness_test(h, SPEC[slug], presets, record, want)
         passed = sum(t["pass"] for t in report["tests"])
         failures += len(report["tests"]) - passed
         print(f"{passed}/{len(report['tests'])} passed")

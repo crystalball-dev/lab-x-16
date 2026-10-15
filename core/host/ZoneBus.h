@@ -27,8 +27,8 @@ namespace lab::host::bus
         uint32_t code;            // effect code, four characters packed (e.g. "L6Co")
         int64_t heartbeatMs;      // juce::Time::currentTimeMillis() of the last processed block
         int32_t role, state;      // the effect's own small state
-        float load;               // CONTAGION viral load 0..1; 0 for everyone else
-        uint32_t reserved;
+        float load;               // CONTAGION viral load 0..1 (published in even bars); 0 for everyone else
+        uint32_t reserved;        // CONTAGION: the odd bars' load, as float bits (publishPair)
         uint64_t callsign;        // up to eight characters, packed
     };
 
@@ -95,7 +95,7 @@ namespace lab::host::bus
     {
         uint32_t id = 0, code = 0;
         int32_t role = 0, state = 0;
-        float load = 0.0f;
+        float load = 0.0f, loadOdd = 0.0f;
         uint64_t callsign = 0;
     };
 
@@ -132,6 +132,7 @@ namespace lab::host::bus
                     std::atomic_ref<int32_t> (p.role).store (0);
                     std::atomic_ref<int32_t> (p.state).store (0);
                     std::atomic_ref<float> (p.load).store (0.0f);
+                    std::atomic_ref<uint32_t> (p.reserved).store (0u);
                     std::atomic_ref<uint64_t> (p.callsign).store (packCallsign (callsign));
                     heartbeat();
                     return true;
@@ -178,6 +179,25 @@ namespace lab::host::bus
             std::atomic_ref<float> (slot->load).store (load);
         }
 
+        // CONTAGION: one load per bar parity, written before the state (release) that names the bar, so a reader that
+        // sees the bar sees its load. A reader at bar b reads bar b - 1's load whether or not the writer has already
+        // crossed into bar b: the decision never depends on which instance the host processes first.
+        void publishParity (int32_t role, int32_t state, int64_t bar, float load) noexcept
+        {
+            if (slot == nullptr)
+                return;
+            if ((bar & 1) == 0)
+                std::atomic_ref<float> (slot->load).store (load, std::memory_order_relaxed);
+            else
+            {
+                uint32_t bits;
+                std::memcpy (&bits, &load, sizeof (bits));
+                std::atomic_ref<uint32_t> (slot->reserved).store (bits, std::memory_order_relaxed);
+            }
+            std::atomic_ref<int32_t> (slot->role).store (role, std::memory_order_relaxed);
+            std::atomic_ref<int32_t> (slot->state).store (state, std::memory_order_release);
+        }
+
         // Every other living, fresh peer. Returns the count; fills `out` up to `capacity`.
         int peers (PeerView* out, int capacity) const noexcept
         {
@@ -200,9 +220,11 @@ namespace lab::host::bus
                     auto& v = out[count];
                     v.id = id;
                     v.code = std::atomic_ref<uint32_t> (p.code).load();
+                    v.state = std::atomic_ref<int32_t> (p.state).load (std::memory_order_acquire);
                     v.role = std::atomic_ref<int32_t> (p.role).load();
-                    v.state = std::atomic_ref<int32_t> (p.state).load();
                     v.load = std::atomic_ref<float> (p.load).load();
+                    const auto bits = std::atomic_ref<uint32_t> (p.reserved).load();
+                    std::memcpy (&v.loadOdd, &bits, sizeof (bits));
                     v.callsign = std::atomic_ref<uint64_t> (p.callsign).load();
                 }
                 ++count;

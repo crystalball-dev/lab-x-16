@@ -108,6 +108,11 @@ namespace lab::host
         virtual int blobVersion() const { return 0; }            // 0: no blob
         virtual void saveBlob (juce::MemoryOutputStream&) const {}
         virtual bool loadBlob (juce::MemoryInputStream&, int) { return false; }
+        // A factory preset was written (message thread): state that is not a parameter can follow it (NUMBERS STATION
+        // drops a typed key, so a preset's key is its KEY number alone). Use atomics for anything the audio thread reads.
+        virtual void presetLoaded (int) {}
+        // A text form of the chain's own state (ANOMALY's patterns, NUMBERS STATION's key): the harness's --text, tests.
+        virtual bool loadText (const juce::String&) { return false; }
     };
 
     class EffectProcessor : public juce::AudioProcessor, private juce::Timer
@@ -551,6 +556,7 @@ namespace lab::host
                 param->setValueNotifyingHost (param->convertTo0to1 (target));
             }
             currentProgram = index;
+            chain->presetLoaded (index);
             if (fade)
                 programChangePending.store (true);
         }

@@ -70,6 +70,14 @@ namespace lab::host
         if (unit == "bit") return juce::String (v, 1) + " bit";
         if (unit == "/s")  return juce::String (v, v < 10.0f ? 1 : 0) + "/s";
         if (unit == "oct") return (v > 0.0f ? "+" : "") + juce::String (juce::roundToInt (v));
+        if (unit == "min") return juce::String (v, v < 10.0f ? 1 : 0) + " min";
+        if (unit == "km")  return juce::String (v, 1) + " km";
+        if (unit == "m/s2") return juce::String (v, 1) + " m/s2";
+        if (unit == "h")
+        {
+            const int minutes = juce::roundToInt (v * 60.0f) % (24 * 60);
+            return juce::String (minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (minutes % 60).paddedLeft ('0', 2);
+        }
         if (s.kind == Kind::real)
             return juce::String (v, std::abs (v) < 10.0f ? 2 : 1);
         return juce::String (juce::roundToInt (v));

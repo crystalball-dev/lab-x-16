@@ -167,3 +167,177 @@ an injected fault at every stage (and OUTPUT) silenced and logged by name, no fa
 judged) growth in ten 300 s fuzz runs, latency constant through the fuzz, editor PNG 960 x 560 with every panel, and
 every preset within 1 dB of the input RMS. A full rebuild of the seven plugins and seven harnesses takes about 5 min;
 the whole suite about 4 min.
+
+## Waves 2-5: the other eighteen effects
+
+PSY-FIELD, ANOMALY, APPARITION, CARRIER, OASIS, GAUSS and PSY-DOG (wave 2), EMISSION and CONTAGION (wave 3, the bus
+clients), 100 RADS, C-CONSCIOUSNESS, ARTIFACT and SNORK (wave 4, learned and evolved state), ZEALOTS, NUMBERS STATION,
+SARCOPHAGUS, POLTERGEIST and CLEAR SKY (wave 5) were built together and tested once at the end, all at 0.1.0.
+
+**Core additions.** `lab::dsp` gains `Hilbert` (a polyphase IIR phase splitter, twelve first-order all-pass sections
+in two branches, for the true frequency shifts of CARRIER and NUMBERS STATION), `Onset` (LAB X-0's transient-shaper
+envelopes as an onset detector), `Allpass`, `Resonator` and `CombFilter` (LAB X-10's resonator), `FormantBank` (LAB
+X-19's alto table), `Ensemble` (X-19), `Dynamics` (transient shaper, compressor, parallel grit), the generators
+`Programmer`, `Whisper`, `Presence` and `Siren`, and `Anomaly`, LAB X-0's TIME and VOLUME lane engine on its own.
+`ui/Views.h` adds bar, matrix, dot-field and big-number views.
+
+**Shared code that changed under wave 1.** Wave 1 passes all its tests again with these changes.
+
+- `MicroShift` runs one formula through every ratio: the two heads keep moving through ratio 1 instead of switching
+  to a fixed path there. RAINBOW's damaged tap, whose detune walk crosses zero, jumped at each crossing; WISH
+  GRANTER's ratios (all above 1) sound the same.
+- `Fdn` takes an optional 8 x 8 mixing matrix (C-CONSCIOUSNESS's learned one, in place of the Hadamard), an extra mono
+  input (EMISSION's bloom, C-CONSCIOUSNESS's harmony) and exposes its line outputs. Without them it is the same network.
+- The Zone Bus keeps a load per bar parity (`publishParity`): CONTAGION's peers cross a bar line in any order, and
+  each reads every peer's load for the bar just ended from the other parity's slot, so the outbreak does not depend
+  on the order the host runs the tracks in. The layout version is unchanged (the field was reserved and zero).
+- `Chain::presetLoaded` lets state that is not a parameter follow a factory preset (NUMBERS STATION drops a typed key,
+  so a preset's key is its KEY number alone), and `Chain::loadText` gives the harness a text form of a chain's own
+  state (`--text`: ANOMALY's patterns, NUMBERS STATION's key). The harness also takes an instance prefix (`k:`) on `--step`, `--ramp`, `--text` and `--set`,
+  prints every instance's meters, and can post an EMISSION schedule on the bus (`--emission`).
+- Parameter units `min`, `km`, `m/s2` and `h` (shown as hh:mm).
+
+**Changes from the plan, effect by effect.**
+
+- ANOMALY: RESOLUTION and LENGTH are global rather than stored per pattern (one grid, one clock); the presets select
+  the eight factory patterns. MIDI holds work with the transport stopped (on an internal clock at the last tempo) and
+  take effect at once rather than at the next step.
+- APPARITION: events read the input history when they play, not when the onset is found, so only causality limits
+  them: a pre-echo k echo times early needs k x ECHO + 2 ms <= 240 ms, and the reverse swell (audio from after the
+  hit, played backwards) needs twice its length inside the window, so SWELL LENGTH is 20-120 ms instead of 20-200. The
+  plan's single clamp on the sum of all lengths is replaced by these per-event limits.
+- EMISSION: ARM is Off, Countdown (COUNTDOWN bars after the bar in which it was switched on, as planned) or At Bar
+  (fires at bar COUNTDOWN of the song, so a render or a loop replays it wherever playback starts). Only the Siren
+  instance sounds the siren. The P-wave's noise burst follows the track's own envelope, so a silent track stays silent.
+- CONTAGION: DRIFT is a wandering delay whose amplitude follows the symptoms (exactly the input at none). Every
+  instance starts healthy when the transport starts, so a render repeats the outbreak.
+- 100 RADS: the economy is turned around so the plan's own test can hold. The plan had winners pay GREED x price and
+  losers save TAX x (1 - W) on their own; then the winner changes even at TAX 0. Here the winners pay TAX x price, the
+  tax goes to the losers, and GREED enriches the winners: TAX 0 is a market where the rich stay rich.
+- C-CONSCIOUSNESS: Oja's rule as planned, but every step is projected back to an orthogonal matrix (the norm clamp,
+  then two Newton-Schulz polar steps) instead of normalising rows. With row normalisation the matrix drifted toward
+  rank one and the norm clamp then scaled the whole feedback down: the more the mind learned, the shorter the reverb
+  (the learned tail came out 5 dB under the untrained one). The harmony combs filter what enters the network rather
+  than its own output: fed back from the output they formed a second loop around the network that could oscillate
+  (the fuzz's growth check caught it). ABSORB also freezes forgetting.
+- ARTIFACT: reseeds from EMISSION's schedule (when the song crosses a fire point) instead of the bus's reseed counter,
+  so the reseed lands on the same bar in every render. Gray-Scott's textbook constants (Du 0.16) die out on a ring of
+  24 cells; a search over the ring gave Du 0.4, Dv 0.05 and the four regimes Spots (F 0.04, k 0.062), Stripes (0.03,
+  0.055), Mitosis (0.025, 0.05) and Coral (0.05, 0.055), with three-cell seeds, the input's energy modulating the
+  substrate feed (feeding v directly saturated every cell), and re-nucleation when the pattern dies out.
+- GAUSS: the boost is POWER x charge in dB; a shot leaves charge x RESIDUAL; the rail flash scales with the hit.
+- SNORK: what plays is a voice whose genome glides to the alpha's (no jump at a generation boundary).
+- ZEALOTS: an AGC keeps the flock at the input's level (a converged flock is coherent and much louder), and each
+  agent's restlessness is its own slow random walk.
+- CLEAR SKY: every CLEAR SKY in a project sees the same sky (the Markov rolls hash the front's index alone).
+
+**Bugs the tests found.** Each is fixed and its test passes.
+
+- ANOMALY's heads: a head that jumped kept the old head's speed, so a turn from forward to backward (Vortex after live
+  play, and from the very first sample) was a jump on every sample: Vortex played a stale head two samples off at
+  119/120 of the level. A head now takes its speed from its first step after a jump.
+- The onset detector fired a second time on a lone click's own decay: when the 50 ms gap ended, the fast envelope
+  still led the slow one. It now re-arms only after the attack condition has once been false. (POLTERGEIST's drop test
+  saw two objects; SARCOPHAGUS made a small second deposit.)
+- OASIS: the noise floor dropped instantly to whatever the envelope read, including while the envelope charged from
+  silence, then climbed back at 1 dB/s, so it sat far below the hiss and DEHISS never engaged; any song starting in
+  silence would do the same. The floor now falls at most 40 dB/s, rises 1 dB/s, and learns nothing from digital
+  silence. The expander also opened slowly and closed fast, which smeared attacks; it now opens in 2 ms and closes
+  over 80 ms.
+- CLEAR SKY: each flash overwrote the one pending thunder, so with flashes every few seconds most rumbles never came
+  (the first arrived 18.5 s after the first flash instead of 5 s). Flashes now queue their thunder, and up to four
+  rumbles overlap.
+- 100 RADS: the auction ran every 16 samples on raw band levels, so the ripple of six equal tones flipped the winner
+  thousands of times (and would have chattered the gains). A reigning winner now keeps its seat until outbid by
+  10 %. The budget balanced the dB targets weighted by dB levels, which does not conserve power (-1.7 LUFS on pink
+  noise); balancing the targets in power was not enough either (-4.6 LUFS), because on noise the winner still changes
+  several times a second and a new winner rises slower than the old one falls. The shift is now computed every block
+  on the gains as they stand, holding the bands' K-weighted power (BS.1770's curve at each band's centre), in a few
+  passes because bands at +BOOST or -CUT stop taking it; the gains also move sample by sample across the block.
+- ZEALOTS: at ZEALOTRY 0 the cohesion spring and an alignment that did not fade with ZEALOTRY cancelled most of the
+  restlessness (about 30 % of MAX DETUNE). Cohesion is now 0.05 + 5.45 x ZEALOTRY and alignment 0.5 x ZEALOTRY.
+- SNORK: a specimen's pitch shifter was fed only while its pitch gene shifted, so when the gene (or the voice's glide)
+  came back, up to 50 ms of stale audio replayed; in silence that read as growth. The shifter always runs and fades in
+  and out over 20 ms around +-0.25 semitone.
+- APPARITION placed echoes at the truncated sample count: 0.06 x 48000 is 2879.99..., so echo k came k samples late.
+  Sample counts are rounded.
+- SARCOPHAGUS: particles of one hit start within its first 20 ms at one pitch, so a dense burst added up nearly in
+  phase, up to 27 dB over the hit (a 300 s fuzz run peaked at the +18 dBFS ceiling). The particle bus is now scaled
+  by the number of grains sounding (1 / sqrt (n / 2), smoothed over 2 ms) and soft-limited at 0 dBFS; T3 bounds the
+  peak of two minutes of the densest decay.
+
+**Test interpretations.** As for wave 1, these are recorded so the numbers in the results can be read.
+
+- C2 for the bus clients and modulators: EMISSION as a listener with no schedule, CONTAGION healthy, 100 RADS at DEPTH
+  0, NUMBERS STATION with the filter, carrier, numbers and buzzer off, SARCOPHAGUS at DOSE 0, CLEAR SKY calm and clear.
+- C5 judges growth against the loudest of the first 4 s of silence (`--growth peak`) for ANOMALY (a repeat can replay
+  a loud slice in silence) and C-CONSCIOUSNESS (TRANSFER hums in silence by design). GAUSS (the coil whine charges in
+  silence), EMISSION, ARTIFACT, NUMBERS STATION (the buzzer and pips), SARCOPHAGUS (a late generation's particle can
+  pop seconds after the hit, louder than the quiet moments before it), POLTERGEIST and CLEAR SKY (the weather beds)
+  make sound in silence by design: their fuzz checks faults and non-finite output only, and their own tests bound
+  their levels.
+- ANOMALY T1 compares Springboard, Vortex, Jelly and Comet with their exact models (a 30 dB SNR floor; Hermite reads
+  of a 1 kHz tone at half speed are the limit).
+- APPARITION T2 checks the echoes to the sample and the swell's energy inside its window; T4 checks that COUNT 6 at
+  200 ms writes nothing before t - 240 ms.
+- EMISSION T1 detects the P-wave with a two-zero notch at the test tone: it nulls any steady tone, so the warning's
+  high-pass does not register, and the first changed sample does.
+- CONTAGION T4 measures at full fever (incubation 0, linear course): 6 bits and the drift's speed within 88 cents.
+- 100 RADS T2 counts winner changes after the first seating (2-16 s, 28 beats at 120 BPM).
+- C-CONSCIOUSNESS T3 compares an untrained mind (ABSORB from the start) with one that learned a G for 5 s and was
+  then erased and set to ABSORB, the same impulse at 10 s in both, DECAY 0.3 so the learned tone has died by then.
+- SNORK T1's generation 0 is the neutral genome the voice starts from (the best of the random first population can
+  already be past the goal's target, the input's centroid plus 1.25 octaves at STRENGTH 0.5).
+- ZEALOTS T2 averages the spread over eight moments; the crowd wanders.
+- NUMBERS STATION T3 times the buzzer by its rising edges: an autocorrelation locks where the ~25 Hz buzz's pulses also
+  line up (31 pulses, 1.28 s).
+- PSY-DOG T3 reads the pack's duck envelope (its meter) after a 60 Hz thump, at the end of renders 20 ms apart. The
+  pack's audio level is no measure of BLOOM: the phantoms' pitch-shift heads make it wander by several dB, so on a
+  noise hit and full band it seemed back after 0.23 s, and even band-limited around the tone after 0.24 s.
+- CLEAR SKY T4: every weather state at its default element levels on the drums and on white noise, and a storm with
+  every element at maximum on the drums, stays within 6 dB of the input's peak. (White noise through the flash's +6 dB
+  shelf above 6 kHz gains 5 dB on its own.) Silence in gives only the beds, under -6 dBFS.
+- SARCOPHAGUS T1 compares particle counts with the Bateman solution integrated with the effect's own control step,
+  from eight clicks a quarter second apart: one click gives about 50 particles per generation, whose Poisson spread
+  (14 %) alone fails a 20 % tolerance one time in six. Tolerance 20 %, or three standard deviations where few are
+  expected.
+- P1: NUMBERS STATION's Complement A and Complement B keep OUTPUT at 0 dB. They are a pair whose outputs sum to the
+  input across two tracks (T1); a loudness trim on each would break the sum. The spec's `untrimmed` list exempts them
+  from both `trim_presets.py` and P1.
+
+### Waves 2-5 results
+
+(2026-10-15, `python -I test/run_tests.py`, six runners in parallel, 300 s fuzz runs)
+
+| Effect | Checks | Latency | Worst-preset CPU (48 kHz, 64-sample blocks) | pluginval 5 / 10 | Effect tests |
+|---|---|---|---|---|---|
+| PSY-FIELD 0.1.0 | 15/15 | 0 | 240x | pass / pass | exposure full after 5 s ONSET, empty after 5 s RECOVERY; silence stays exactly silent; resonator peak 221.2 Hz for 220, MIDI 57 tunes 220.0 Hz; drift within 25.9 ct at DRIFT 40, at most 0.55 ct per 10 ms; tracker 196.0 Hz on G3 |
+| ANOMALY 0.1.0 | 14/14 | 0 | 384x | pass / pass | Springboard and Vortex exact (SNR 329 and 327 dB), Jelly 106 dB, Comet 68 dB; a pattern switch lands exactly on the bar line at 120, 150 and 160 BPM; a MIDI hold repeats while held and is exact outside |
+| APPARITION 0.1.0 | 13/13 | 250 ms (11025, 12000, 24000) | 192x | pass / pass | pre-echoes at 60, 120 and 180 ms to the sample; the swell inside its window; PHANTOM 30.6 dB down within 50 ms of a hit; nothing written before t - 240 ms |
+| CARRIER 0.1.0 | 14/14 | 0 | 160x | pass / pass | formants U 326.9 / 720.2 Hz (325 / 700), I 348.8 / 1727.5 Hz (350 / 1700); combs within 0.09 st of the chord and of held MIDI notes; shifted image 70.4 dB down; woodpecker 0.1000 s free, 0.1250 s at 1/16 |
+| OASIS 0.1.0 | 13/13 | 64 samples | 47x | pass / pass | clipped sine's THD from -17.5 to -48.1 dB; hiss in the pauses 26.5 dB down, the tone -0.09 dB; above 8 kHz from -103 to +33 dB with REGENERATE |
+| GAUSS 0.1.0 | 13/13 | 64 samples | 480x | pass / pass | +11.93 dB after silence, +0.6 dB 50 ms later; +3.0 dB at RESIDUAL 0.25; whine -48, -23 (charged), -63 dB (after the shot) |
+| PSY-DOG 0.1.0 | 13/13 | 0 | 120x | pass / pass | the pack silent within 50 ms of a hit; left-right correlation -0.006 at SPREAD 1; back within 1 dB 0.48 s after the hit (0.46 expected) |
+| EMISSION 0.1.0 | 15/15 | 0 | 160x | pass / pass | every instance's P-wave at 16.000 s to the sample (At Bar and Countdown), repeats at 32 and 48 s to the sample; SHELTER 1 within 2e-7 of the input; ANABIOTICS silent, then back; a lone siren the same |
+| CONTAGION 0.1.0 | 15/15 | 0 | 320x | pass / pass | R0 0: no infection in 64 bars; R0 8: all six susceptible peers infected, the immune one never; reruns bit-identical; full fever 6.0 bits, drift 19 ct; alone, susceptible again after WANE |
+| 100 RADS 0.1.0 | 14/14 | 0 | 148x | pass / pass | DEPTH 0 exact; 19 seat changes in 28 beats at TAX 0.3, none at TAX 0; +0.18 LUFS on pink noise at BUDGET 0; gains within -9.0 and +6.0 dB |
+| C-CONSCIOUSNESS 0.1.0 | 13/13 | 0 | 74x | pass / pass | 10 min at MEMORY 1, FORGET 0: spectral norm 1.0000, moved 27.8 from the Hadamard, no fault; learned tail +7.1 dB at C, E and G; erased mind equals an untrained one to 6e-11 |
+| ARTIFACT 0.1.0 | 14/14 | 0 | 160x | pass / pass | resonators at 220.0, 311.1 and 381.1 Hz (1, sqrt 2, sqrt 3); strongest peak 1144 Hz on a lattice ratio; field within [0, 0.90]; gain variance 0.061 at FORMATION 6, field still to 0.11 % in 10 s at 30; one reseed on an emission, none without |
+| SNORK 0.1.0 | 13/13 | 0 | 27x | pass / pass | BRIGHTER: the alpha's centroid from 932 to 2202 Hz (2.4x) in 16 generations; EVOLVE Off keeps the genome; one strain renders identically, another differs |
+| ZEALOTS 0.1.0 | 14/14 | 0 | 113x | pass / pass | spread 0.07 ct at ZEALOTRY 1, 19.3 ct on average at 0 (MAX DETUNE 25); 0.16, 19.2 and 0.22 ct before, just after and 2 s after a hit; 10 min of motion without a non-finite sample |
+| NUMBERS STATION 0.1.0 | 14/14 | 0 | 384x | pass / pass | the complementary pair sums to the input within 1.5e-8; keys repeat and differ; buzzer period 1.2501 s, pips 80 ms on, 40 off; shifted image 70.4 dB down |
+| SARCOPHAGUS 0.1.0 | 14/14 | 0 | 320x | pass / pass | particle counts within 10 % of the Bateman solution (eight clicks; 396, 431, 378, 390 at 30 s for 400, 400, 400, 379); none after ten of the longest half-lives; two minutes of the densest decay peak at the input's level; generation 2 at -1.2 ct of +6 st |
+| POLTERGEIST 0.1.0 | 13/13 | 0 | 480x | pass / pass | first impact 0.4517 s (free fall from 1 m: 0.4518), bounce interval 0.5417 s (0.5421); Doppler 197 approaching up, 25 receding down, 0 wrong; RAGE with 12 objects 3.6 dB over the input's peak |
+| CLEAR SKY 0.1.0 | 14/14 | 0 | 175x | pass / pass | thunder 5.000 s after its flash at 1.715 km; the day at 16:00 after 130 s of a 1-minute day from 12:00; rain 3.5x the drops for 4x RAIN; weather states at most 5.6 dB over the input's peak, the beds alone under -6 dBFS |
+
+Wave 1 runs again with the changed core: KAYMANOV 14/14 (80x), DOSIMETER 14/14 (384x), SILO 15/15 (175x), RAINBOW
+14/14 (101x), WISH GRANTER 14/14 (120x), each with the same effect-test numbers as before and pluginval 5 and 10.
+
+Every effect, all 23: bypass null 0.0, state round trip identical, preset switches below the presets' own jumps with no
+fault, an injected fault at every stage (and OUTPUT) silenced and logged by name, no fault or non-finite sample (and,
+where judged, no growth) in ten 300 s fuzz runs, latency constant through the fuzz, an editor PNG of 960 x 560 with
+every panel, every trimmed preset within 1 dB of the input RMS, and pluginval strictness 5 and 10: 319 checks, all
+pass. The whole suite takes about 6 minutes in six parallel runners. After a change to a shared header, rebuilding the
+23 plugins (VST3 and standalone) and 25 harnesses with `msbuild build\LABX16.sln /m:12` takes about 14 minutes; JUCE's
+modules are not recompiled. (`cmake --build` given several `--target` names under the Visual Studio generator builds
+them one MSBuild at a time, with one link running; a whole-solution build runs a dozen compiles and links at once.)

@@ -336,16 +336,16 @@ Stages: `anomaly`, `output`.
 
 **New DSP:** `RegionSource` implemented by `LaneGrid` state: 8 patterns × 2 lanes × 64 steps at resolution
 1/8, 1/16 or 1/32 and length 16, 32 or 64; regions are runs of identical slots (X-0 rule); boundary snapping and
-the block-edge lesson from X-0 0.1.1 carried over. MIDI: notes 60-71 hold TIME slots 1-12, 72-83 hold VOLUME slots
-1-12 while the key is down (if F5 passed; else the parameters remain). `run` Host follows FL's bar position; Free
-uses an internal clock at the last tempo.
+the block-edge lesson from X-0 0.1.1 carried over. MIDI: notes 60-71 hold TIME slots 1-12, 72-79 hold the eight
+VOLUME slots while the key is down, from the moment the note arrives, and also with the transport stopped (on the
+internal clock). `run` Host follows FL's bar position; Free uses an internal clock at the last tempo.
 
 **Parameters**
 
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `pattern` | Pattern | 1..8 | 1 | | integer; switches at the next pattern boundary |
-| `resolution` | Resolution | 1/8\|1/16\|1/32 | 1/16 | | per pattern in state; this selects the edit pattern's |
+| `resolution` | Resolution | 1/8\|1/16\|1/32 | 1/16 | | global: one grid, one clock for every pattern |
 | `length` | Length | 16\|32\|64 | 16 | | |
 | `scratch_depth` | Scratch | 0..1 | 0.6 | % | |
 | `run` | Run | Host\|Free | Host | | |
@@ -394,12 +394,12 @@ a probability set by R0 and their immunity; they recover, stay immune for `wane`
 
 **Symptoms chain (s in 0..1)**
 ```
-in -> DRIFT (MicroShift, ±80 ct x s random walk) -> CHOKE (SVF LP 20 kHz -> 1.2 kHz x sqrt(s)) -> GRIT tube 0 -> 24 dB x s, corner 300 Hz
+in -> DRIFT (a wandering delay, 0-24 ms x s: wow up to ±80 ct, exactly the input at s = 0) -> CHOKE (SVF LP 20 kHz -> 1.2 kHz x sqrt(s)) -> GRIT tube 0 -> 24 dB x s, corner 300 Hz
    -> CRUSH bits 16 -> 16 - 10 s, hold 1 -> 1 + 7 s -> + WHISPER (s x envelope) -> level -3 dB x s -> mix x symptoms macro
 ```
 Stages: `drift`, `choke`, `grit`, `output`.
 
-**Core modules:** `ZoneBus Client`, `MicroShift`, `SVF`, `ParallelGrit`, `Crush`, `Whisper`, `Follower`, `Hash`.
+**Core modules:** `ZoneBus Client`, `DelayLine`, `SVF`, `ParallelGrit`, `Crush`, `Whisper`, `Follower`, `Hash`.
 
 **Parameters**
 
@@ -456,9 +456,11 @@ by `1 - shelter`. Alone, an instance with `role` Siren still runs its own schedu
 - Anabiotics On: fade to silence in 20 ms at `F - 0.25 beat`, return with a 200 ms fade at the end of aftermath.
 - Repeat: when `repeat` is not Off, the next fire point is `F + repeat bars`, published by the siren at each fire.
 
-**Scheduling.** `arm` Off → On edge on the siren: at the next bar boundary it posts
-`EmissionSchedule { fireBar = bar + countdown, lead, severity, pressure, aftermath, repeat, seq }`. Listeners use
-the newest `seq`. Because phases are functions of bar position, host loops replay the emission when they cross F.
+**Scheduling.** `arm` Countdown, on its Off → Countdown edge on the siren: at the next bar boundary it posts
+`EmissionSchedule { fireBar = bar + countdown, lead, severity, pressure, aftermath, repeat, seq }`. `arm` At Bar
+posts `fireBar` = bar COUNTDOWN of the song (bar 1 is the first), so a render or a loop replays the emission
+wherever playback starts. Listeners use the newest `seq`; with REPEAT every instance derives the later fire points
+from the same schedule. Because phases are functions of bar position, host loops replay the emission when they cross F.
 Stages: `program`, `output`.
 
 **Core modules:** `ZoneBus Client`, `Siren` generator, `Crush`, `Transient`, `SVF`, `Regulator`, `Fdn` (small), `Transport`.
@@ -468,7 +470,7 @@ Stages: `program`, `output`.
 | id | name | range | default | unit | notes |
 |---|---|---|---|---|---|
 | `role` | Role | Listener\|Siren | Listener | | |
-| `arm` | Arm | Off\|Armed | Off | | siren only; edge |
+| `arm` | Arm | Off\|Countdown\|At Bar | Off | | siren only; Countdown on its edge |
 | `countdown` | Countdown | 1..64 | 8 | bars | |
 | `lead` | Siren Lead | 1..8 | 2 | bars | |
 | `repeat` | Repeat | Off\|8\|16\|32\|64\|128 | Off | bars | |
@@ -516,8 +518,10 @@ in -> look-ahead ring (write head) ; onset detector at the write head (dual enve
       WHISPER: rising formant noise from t - WHISPER_LEAD to t
    output head (t - 250 ms): dry + accumulation ; PHANTOM: 2 Schroeder allpass chains (5-23 ms) L/R, gain x (1 - attack)
 ```
-Constraint: `swell_len + whisper_lead + count × echo_time ≤ 240 ms` is enforced by clamping; the UI shows the
-budget. Stages: `apparition`, `output`.
+Events read the input history when they play, not when the onset is found, so each is limited by causality
+alone: a pre-echo k echo times early needs `k × echo_time + 2 ms ≤ 240 ms` (later ones are dropped), and the swell,
+which plays audio from after the hit, needs twice its length inside the window (SWELL LENGTH ≤ 120 ms); the UI shows
+the budget. Stages: `apparition`, `output`.
 
 **Core modules:** `DelayLine`, `Onset`, `Follower`, `Whisper`, allpass from `Fdn` internals, `LatencyAligner`.
 
@@ -533,7 +537,7 @@ budget. Stages: `apparition`, `output`.
 | `echo_feedback` | Pre-echo Decay | 0..0.9 | 0.6 | % | |
 | `grain` | Grain | 10..120 | 40 | ms | log |
 | `swell_level` | Swell | 0..1 | 0.4 | % | |
-| `swell_len` | Swell Length | 20..200 | 90 | ms | |
+| `swell_len` | Swell Length | 20..120 | 90 | ms | twice its length must fit the 240 ms window |
 | `swell_tone` | Swell Tone | 500..16000 | 5000 | Hz | log |
 | `whisper_level` | Whisper | 0..1 | 0.2 | % | |
 | `whisper_lead` | Whisper Lead | 50..200 | 120 | ms | |
@@ -565,15 +569,18 @@ space is its detune: `dd/dt = -(2^(v/1200) - 1)` with `v` in cents. The boids ru
 velocity at control rate. Nothing else is needed: 16 steered chorus voices.
 
 **Rules (every control block, dt = n / sr)**
-- cohesion: `v_i += k_c × (d_i - leader_delay) × dt × 1000` (toward the leader's delay);
-  pan: `w_i += k_c × (0 - y_i) × dt`
-- alignment: `v_i += k_a × (mean v - v_i) × dt`
-- separation: for each j with `|d_i - d_j| < sep`: `v_i += k_s × sign(d_i - d_j) × (1 - |d_i - d_j| / sep) × dt × 1000`
-- damping `v_i *= 1 - 0.5 dt`; clamp `|v_i| ≤ max_detune`; reflect at `d_min` 2 ms and `d_max` 60 ms
-- zealotry z: `k_c = 0.5 + 5z`, `k_s = 0.2 + 2(1 - z)`, `k_a = 1`; `sep = 1.5 ms`
+- each velocity relaxes (300 ms) toward the sum of: cohesion `2 k_c (d_i - leader_delay)` (d in ms, toward the
+  leader's delay); alignment `k_a × (mean v - v_i)`; restlessness `(1 - z) × max_detune × walk_i`, each agent's own
+  slow random walk (0.4-1 Hz); separation `-30 k_s × sign(d_i - d_j) × (1 - |d_i - d_j| / sep)` from every j closer
+  than `sep`. Pan: `w_i` relaxes toward `-k_c y_i / 2`.
+- clamp `|v_i| ≤ max_detune`; reflect at `d_min` 2 ms and `d_max` 60 ms
+- zealotry z: `k_c = 0.05 + 5.45z`, `k_a = 0.5z`, `k_s = 0.2 + 2(1 - z)`; `sep = 1.5 ms`. (At z = 0 only a faint pull
+  keeps the crowd inside the line: a cohesion of 0.5 and an alignment that did not fade cancelled most of the
+  restlessness, about 30 % of MAX DETUNE.)
 - predator: on a transient of the input or the sidechain (dual envelope), `v_i += fear × hash-signed max_detune`,
   `w_i += fear × hash-signed 1`
-Output: `Σ agents / sqrt(N) × wet`, panned by `y_i × spread`, plus dry. Stages: `flock`, `output`.
+Output: `Σ agents` held at the input's power by a slow AGC (x0.25 to x4; a converged flock is coherent and much
+louder than a scattered one) × 0.7, panned by `y_i × spread`, plus dry. Stages: `flock`, `output`.
 
 **Core modules:** `DelayLine` (Hermite), `Follower`/`Onset`, `panGains`, `Hash`; UI `FlockView` (agents as dots
 in delay × pan space).
@@ -617,12 +624,14 @@ instead of being held still.
 - bands from five LR4 crossovers: 120, 300, 800, 2000, 5000 Hz (the outer two set by `low_split`, `high_split`,
   the inner three interpolated geometrically); `e_b` = band RMS in dB over a 30 ms follower, mapped -60..0 → 0..1.
 - bid `b_b = e_b × (1 + hunger × W_b)`; wealth `W_b` in [0, 1], initial 0.5.
-- winners = top `slots` bids; price = the next bid down. Per beat: winners `W -= greed × price`, losers
-  `W += tax × (1 - W)`, clamped.
-- target gains: winners `+boost dB`, losers `-cut × (1 - 0.5 W_b) dB`; then subtract the energy-weighted mean
-  so `Σ e_b g_b = 0` (loudness kept), allowing up to `budget` dB of net rise.
-- gains smoothed with `speed` (attack 1-50 ms, release 20-500 ms), scaled by `depth`, applied per band, bands
-  summed. At depth 0 the stage hands back its input (X-0 multiband rule).
+- winners = top `slots` bids, a reigning winner's bid counting 10 % more (a level's ripple cannot unseat it); price =
+  the next bid down. Per beat: each winner pays `tax × price` (at most its wealth) and gains `0.1 × greed × (1 - W)`;
+  the tax collected is shared among the losers; clamped. TAX 0 is a market where the rich stay rich (T2).
+- target gains: winners `+boost dB`, losers `-cut × (1 - 0.5 W_b) dB`, smoothed with `speed` (attack 1-50 ms,
+  release 20-500 ms); then one shift for every band, computed on the smoothed gains, holds the bands' K-weighted
+  power (BS.1770's curve at each band's centre) where it was (loudness kept, also while a new winner is still
+  rising), allowing up to `budget` dB of net rise; a few passes, since bands at `+boost` or `-cut` stop taking it.
+- gains scaled by `depth`, moved sample by sample across each block, applied per band, bands summed. At depth 0 the stage hands back its input (X-0 multiband rule).
 Stages: `auction`, `output`.
 
 **Core modules:** `LR4`, `Follower`, `Hash` (tie-break).
@@ -636,8 +645,8 @@ Stages: `auction`, `output`.
 | `boost` | Boost | 0..12 | 6 | dB | |
 | `cut` | Cut | 0..24 | 9 | dB | |
 | `hunger` | Hunger | 0..1 | 0.5 | % | |
-| `greed` | Greed | 0..1 | 0.5 | % | price paid per beat |
-| `tax` | Tax | 0..1 | 0.3 | % | losers' savings per beat |
+| `greed` | Greed | 0..1 | 0.5 | % | winners' gain per beat |
+| `tax` | Tax | 0..1 | 0.3 | % | share of the price winners pay to losers per beat |
 | `speed` | Speed | 0..1 | 0.5 | % | attack and release |
 | `budget` | Budget | 0..6 | 0 | dB | allowed net rise |
 | `low_split` | Low Split | 60..300 | 120 | Hz | log |
@@ -676,7 +685,9 @@ generation.
 - emission: each generation k spawns grains with Poisson rate `activity × 50/s × λ_k N_k` (hashed per block);
   grain: Hann window of `grain` ms from the deposited onset position, pitch ratio `2^(k × pitch_step / 12)`,
   level `E × attenuation^(k-1)`, low-pass `20 kHz × (1 - darken)^(k-1)`, pan hashed within `spread`.
-- 32 grain players, oldest stolen; deposits older than 10 × the longest half-life are dropped.
+- 32 grain players, oldest stolen; deposits older than 10 × the longest half-life are dropped. The grains' sum is
+  scaled by `1 / sqrt(n / 2)` for `n` sounding (smoothed over 2 ms) and soft-limited at 0 dBFS: grains of one hit
+  start within its first 20 ms at one pitch, so a dense burst adds up nearly in phase.
 Stages: `chain`, `output`.
 
 **Core modules:** `DelayLine` (history), `Onset`, grain reader (from X-3 `GrainCloud` reading logic), `SVF`, `Hash`.
@@ -782,7 +793,8 @@ back to the input's when no sidechain). Fitness = negative weighted distance.
 
 **Breeding (at the generation boundary, hashed by bar and `seed`)**: keep 2 elites; fill the rest by tournament
 (size 3) crossover (uniform, rate `crossover`) and gaussian mutation (σ = 0.2 × `mutation`), genes clamped.
-The best genome becomes alpha; the output crossfades to it over 50 ms. `evolve` Off freezes the population.
+The best genome becomes alpha; what plays is a voice whose genes glide to the alpha's (50 ms), so a generation
+boundary never jumps. `evolve` Off freezes the population.
 Stages: `alpha`, `output`.
 
 **Core modules:** `SVF`, `Shapers` tube, `Crush`, `Ensemble`, `EchoDelay`, `MicroShift`, `Follower`, `Hash`.
@@ -827,10 +839,10 @@ whine rises during the charge; a rail flash fires at discharge.
 
 **Algorithm**
 - `C += dt / recharge` while `env < quiet_thr`, clamped to 1; onset (dual envelope, 64-sample look-ahead so the
-  boost starts on the true attack): gain envelope `g(t) = 1 + (10^(power/20) - 1) × C × exp(-t / pulse)` for
-  `t` from the onset; then `C = residual`.
+  boost starts on the true attack): a boost of `power × C` dB, rising over 1 ms before the hit, held 2 ms, then
+  decaying with `exp(-t / pulse)`; then `C ×= residual` (a hit right after a shot takes `power × C × residual`).
 - whine: sine chirp from 2 kHz rising to 6 kHz as `C` goes 0 → 1, level `whine × C²`, cut at discharge.
-- flash: 8 ms white burst through a 4 kHz high-pass at level `flash × C` at discharge.
+- flash: 8 ms white burst through a 4 kHz high-pass at level `flash × C`, scaled by the hit's peak, at discharge.
 Stages: `rail`, `output`.
 
 **Core modules:** `Follower`, `Onset`, `LatencyAligner`, `SVF`.
@@ -1062,20 +1074,26 @@ Code `L6Cc` · Wave 4 · Fx, Reverb · zero latency · stereo in/out · learned 
 C-Consciousness, many minds fused into one, and X-3's goal of moving a mind into the Noosphere.
 
 **Mechanism.** The FDN's mixing matrix learns from the correlation of its own lines, and a pitch-class memory
-of what passes through tunes comb filters inside the loop. The space slowly takes the shape of the music. ABSORB
-freezes learning and lets the tail ring at what was learned, even on noise. The learned state saves with the project.
+of what passes through tunes comb filters whose output rings inside the network. The space slowly takes the shape
+of the music. ABSORB freezes the mind (not the reverb) and lets what was learned ring on whatever plays, even
+noise. The learned state saves with the project.
 
 **Algorithm**
 - Matrix learning (every control block): `C_ij = (1/n) Σ_t o_i[t] o_j[t]` over the lines' damped outputs;
-  Oja update `M_ij += η (C_ij - M_ij C_jj)`, `η = memory × 1e-4`; rows renormalised to unit norm; then `M` scaled
-  so its spectral norm is ≤ 1 (8 power iterations on `MᵀM`, 8×8); `forget` pulls `M` toward Hadamard:
-  `M += (H - M) × forget × 1e-3` per block. The FDN uses `M` in place of `hadamard(f)`.
+  Oja update `M_ij += η (C_ij - M_ij C_jj)`, `η = memory × 1e-4`; `forget` pulls `M` toward Hadamard:
+  `M += (H - M) × forget × 1e-3` per block; then `M` is scaled so its spectral norm is ≤ 1 (8 power iterations on
+  `MᵀM`, 8×8) and taken back to an orthogonal matrix by two Newton-Schulz steps `M ← M (3I - MᵀM) / 2`, so the
+  mixing rotates energy and never drains it (renormalising rows let `M` drift toward rank one, and the norm clamp
+  then shortened the reverb as it learned). The FDN uses `M` in place of `hadamard(f)`.
 - Pitch-class memory: 36 SVF band-passes (Q 30) at semitone centres over C2-B4 feed a 12-bin histogram
   `P[pc] += energy × memory`, decayed by `forget`; the top `voices` (1-4) pitch classes, when above 25 % of the
-  maximum, tune Resonator combs inside the feedback path at the octave nearest `comb_octave`, glided over 200 ms,
-  with loop gain `harmony × 0.4`.
-- ABSORB On: `η = 0`, histogram frozen, input gain 0 so the tail rings. TRANSFER: when the input is silent for
-  2 s, low-level noise (-48 dBFS) excites the loop so the learned harmony hums; level `transfer`.
+  maximum, tune combs (loop gain 0.85, peaks normalised to unity) at the octave of `comb_octave`, glided over
+  200 ms. What enters the network also passes through them and is added to its input at `harmony × 3` (up to
+  +12 dB at the learned pitches), so the learned harmony rings inside the reverb. (Fed from the network's own
+  output instead, the combs formed a second loop that could oscillate.)
+- ABSORB On: `η = 0`, forgetting stopped, histogram frozen; the input still plays into the network. TRANSFER: when
+  the input is silent for 2 s, low-level noise (-48 dBFS) passes through the combs into the network so the learned
+  harmony hums; level `transfer`.
 - Blob: `M` (64 floats), `P` (12 floats), version 1.
 Stages: `fdn`, `output`.
 
@@ -1088,7 +1106,7 @@ Stages: `fdn`, `output`.
 |---|---|---|---|---|---|
 | `memory` | Memory | 0..1 | 0.5 | % | learning rate, the macro |
 | `forget` | Forget | 0..1 | 0.2 | % | |
-| `harmony` | Harmony | 0..1 | 0.6 | % | comb loop gain |
+| `harmony` | Harmony | 0..1 | 0.6 | % | how much of the combs' output enters the network |
 | `voices` | Voices | 1..4 | 3 | | integer pitch classes |
 | `comb_octave` | Comb Octave | 2..5 | 3 | | integer |
 | `absorb` | Absorb | Off\|On | Off | | |
@@ -1130,12 +1148,16 @@ PROPERTY presets add the artifact's behaviour.
   `sqrt(h² + k² + (l / ratio)²)`; ratios sorted, duplicates removed, capped at 0.45 sr. Resonators are SVF
   band-passes with `k = 1 / q`.
 - Gray-Scott on a ring of 24 cells, `u` activator, `v` inhibitor, `∇²x_i = x_{i-1} + x_{i+1} - 2x_i`:
-  `u += (D_u ∇²u - u v² + F (1 - u) + feed × E_i) dt`, `v += (D_v ∇²v + u v² - (F + k) v) dt`, `D_u = 0.16`,
-  `D_v = 0.08`, dt = 1 per step, steps per second `= 2000 / formation`; clamp to [0, 1]. `E_i` is resonator i's
-  band energy, normalised 0-1. Regime presets `(F, k)`: Spots (0.035, 0.065), Stripes (0.058, 0.065), Mitosis
-  (0.0367, 0.0649), Coral (0.0545, 0.062). Gains `g_i = depth × v_i / max(v)`, smoothed 50 ms.
-- reseed: `u = 1`, `v = 0` with a hashed seed of 3 cells at `v = 0.25`; triggered by `reseed` edge or by the bus
-  `reseedCounter` when `emission_reseed` is On.
+  `u += (D_u ∇²u - u v² + F_i (1 - u)) dt`, `v += (D_v ∇²v + u v² - (F + k) v) dt`, `D_u = 0.4`, `D_v = 0.05`,
+  `F_i = F (1 + feed × (E_i - 0.5))`, dt = 1 per step, steps per second `= 2000 / formation`; clamp to [0, 1]. `E_i`
+  is resonator i's band energy, normalised 0-1: the input modulates the substrate's feed, so the pattern drifts
+  toward the music (feeding `v` directly saturated every cell). Regime presets `(F, k)`: Spots (0.04, 0.062),
+  Stripes (0.03, 0.055), Mitosis (0.025, 0.05), Coral (0.05, 0.055). (The textbook constants, `D_u = 0.16`, die
+  out on a ring of 24 cells; these came from a search over the ring.) A field that dies (max `v` < 0.01)
+  re-nucleates at the most energetic cell. Gains `g_i = depth × v_i / max(v)`, smoothed 50 ms.
+- reseed: `u = 1`, `v = 0` with three hashed seeds three cells wide at `u = v = 0.5`; triggered by the `reseed`
+  edge or, with `emission_reseed` On, when the song crosses a fire point of EMISSION's schedule on the bus (so the
+  reseed lands on the same bar in every render).
 - PROPERTY: Moonlight adds Whisper formant noise keyed by the resonator sum; Battery adds Dust crackle through a
   2-6 kHz band-pass at the pattern's peaks; Fireball adds tube heat (12 dB) on the resonator sum; Bubble adds a
   downward expander on the noise floor (-12 dB below -50 dBFS); Stone Flower softens with a dynamic 6 kHz shelf;
@@ -1244,8 +1266,9 @@ a self-learning de-hisser and harmonic regeneration above a cutoff plus an octav
 ```
 in -> DECLIP: runs of |x| >= CLIP THRESHOLD (auto: flat tops detected by a 64-sample look-ahead) up to 64 samples long
       replaced by cubic Hermite across the run, blended by DECLIP
-   -> DEHISS: 8 SVF bands; per band a noise floor estimate (fast down, 1 dB/s up); downward expander 1:2 below
-      floor + DEHISS x 12 dB, 80 ms release
+   -> DEHISS: 8 bands (a Linkwitz-Riley tree); per band a noise floor estimate (40 dB/s down, 1 dB/s up, nothing
+      learned from digital silence); downward expander 1:4 below floor + 6..12 dB, down to 30 dB x DEHISS, opening
+      in 2 ms and closing over 80 ms
    -> REGENERATE: 2-5 kHz band -> odd-order shaper (x³) -> high-pass at REGEN FROM -> 16 kHz low-pass, added at REGEN
    -> SUB RETURN: 60-160 Hz band -> zero-crossing octave divider -> 120 Hz low-pass, added at SUB REGEN
    -> mix
@@ -1291,7 +1314,8 @@ weather state (AUTO: hashed Markov chain every FRONT RATE bars; or the WEATHER c
    PRESSURE -> FOG low-pass (20 kHz x (0.1 + 0.9 x clearness)) and a gentle tilt
    RAIN -> Poisson drops (2 ms clicks through random 2-6 kHz band-passes) + hiss bed, density x rain
    WIND -> pan motion (0.05-0.3 Hz) and Ensemble depth x wind + high-passed whoosh noise modulated by slow noise
-   LIGHTNING -> Poisson flashes (storm x 0.2/s): +6 dB high shelf for 80 ms; RUMBLE after DISTANCE / 343 m/s: low noise burst 1-3 s
+   LIGHTNING -> Poisson flashes (storm x 0.2/s): +6 dB high shelf for 80 ms; RUMBLE after DISTANCE / 343 m/s: low noise burst 1-3 s (every flash queues its own;
+      up to four overlap)
    NIGHT -> -3 dB above 4 kHz at midnight, 0 at noon; EMISSION SKY -> tilt up, 50 Hz hum, distant siren bed
    -> mix
 ```

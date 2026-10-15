@@ -6,6 +6,8 @@
 //               [--signal sine:440|impulse|impulses:2|noise|pink|sweep:20-20000|chord:C3,E3,G3|drums:172|silence]
 //               [--in <file>] [--level -12] [--side <signal>] [--midi "60@0-2:100,64@1-2"]
 //               [--set id=value ...] [--ramp id=a..b@t0-t1] [--step id=v@t] [--program N] [--program-at "N@s"]
+//               [--text "<chain text>"] [--text k:"..."]   (the chain's own state as text: ANOMALY patterns, a key)
+//               (--set, --step and --ramp take a k: prefix for one instance of several: --step 0:arm=1@2.0)
 //               [--null-check] [--latency-check] [--roundtrip] [--list-params] [--selftest]
 //               [--instances N] [--set k:id=value]          (bus effects: N processors in lockstep, one WAV each)
 //               [--fuzz [--seed 1]] [--no-growth-check]     (random parameters, presets, jumps, blocks, signals)
@@ -304,7 +306,16 @@ namespace
         return events;
     }
 
-    struct Automation { juce::String id; float a, b; double t0, t1; };
+    struct Automation { juce::String id; float a, b; double t0, t1; int instance = -1; };
+
+    // "k:rest" -> (k, rest) when the text starts with an instance number and a colon; (-1, text) otherwise.
+    std::pair<int, juce::String> splitInstance (const juce::String& text)
+    {
+        const auto head = text.upToFirstOccurrenceOf (":", false, false);
+        if (text.contains (":") && head.isNotEmpty() && head.containsOnly ("0123456789"))
+            return { head.getIntValue(), text.fromFirstOccurrenceOf (":", false, false) };
+        return { -1, text };
+    }
 
     struct Stats
     {
@@ -621,6 +632,16 @@ int main (int argc, char* argv[])
                 if (! setParam (*in.proc, in.fx, a))
                     return 2;
     }
+    for (const auto& a : allOptions (args, "--text"))
+    {
+        const auto [k, text] = splitInstance (a);
+        for (int j = 0; j < instances; ++j)
+            if ((k < 0 || k == j) && ! fx[(size_t) j].fx->getChain().loadText (text))
+            {
+                std::cerr << "the chain did not take --text " << text << std::endl;
+                return 2;
+            }
+    }
     if (nullCheck)
         for (auto& in : fx)
             setParam (*in.proc, in.fx, "bypass=1");
@@ -638,6 +659,29 @@ int main (int argc, char* argv[])
     for (auto& in : fx)
         prepare (in, sr, blockSize, sideSpec.isNotEmpty());
     const int latency = first->getLatencySamples();
+
+    // --emission "fireBar,repeatBars,leadBars": an EMISSION schedule on the Zone Bus, as a siren would post it (ARTIFACT's
+    // reseed test; the harness hosts one effect only). Bars count from 0.
+    lab::host::bus::Client emissionPoster;
+    if (args.contains ("--emission"))
+    {
+        const auto parts = juce::StringArray::fromTokens (option (args, "--emission"), ",", "");
+        if (emissionPoster.connect (0x5E1E0001u, "L6Em", "SIREN"))
+        {
+            lab::host::bus::EmissionSchedule s;
+            s.fireBar = parts[0].getLargeIntValue();
+            s.repeatBars = parts.size() > 1 ? parts[1].getIntValue() : 0;
+            s.leadBars = parts.size() > 2 ? parts[2].getIntValue() : 2;
+            s.severity = 1.0f;
+            s.pressureSeconds = 2.5f;
+            s.aftermathSeconds = 4.0f;
+            s.sirenId = 0x5E1E0001u;
+            s.seq = 1;
+            emissionPoster.postSchedule (s);
+        }
+        else
+            std::cerr << "no Zone Bus for --emission" << std::endl;
+    }
 
     if (args.contains ("--png"))
     {
@@ -671,22 +715,24 @@ int main (int argc, char* argv[])
     const auto midiEvents = parseMidi (option (args, "--midi"));
 
     std::vector<Automation> automation;
-    for (const auto& a : allOptions (args, "--ramp"))   // id=a..b@t0-t1
+    for (const auto& raw : allOptions (args, "--ramp"))   // [k:]id=a..b@t0-t1
     {
+        const auto [k, a] = splitInstance (raw);
         const auto id = a.upToFirstOccurrenceOf ("=", false, false);
         const auto values = a.fromFirstOccurrenceOf ("=", false, false).upToFirstOccurrenceOf ("@", false, false);
         const auto times = a.fromFirstOccurrenceOf ("@", false, false);
         automation.push_back ({ id, values.upToFirstOccurrenceOf ("..", false, false).getFloatValue(),
                                 values.fromFirstOccurrenceOf ("..", false, false).getFloatValue(),
                                 times.upToFirstOccurrenceOf ("-", false, false).getDoubleValue(),
-                                times.fromFirstOccurrenceOf ("-", false, false).getDoubleValue() });
+                                times.fromFirstOccurrenceOf ("-", false, false).getDoubleValue(), k });
     }
-    for (const auto& a : allOptions (args, "--step"))   // id=v@t
+    for (const auto& raw : allOptions (args, "--step"))   // [k:]id=v@t
     {
+        const auto [k, a] = splitInstance (raw);
         const auto id = a.upToFirstOccurrenceOf ("=", false, false);
         const float v = a.fromFirstOccurrenceOf ("=", false, false).upToFirstOccurrenceOf ("@", false, false).getFloatValue();
         const double t = a.fromFirstOccurrenceOf ("@", false, false).getDoubleValue();
-        automation.push_back ({ id, v, v, t, t });
+        automation.push_back ({ id, v, v, t, t, k });
     }
     struct ProgramChange { int index; double time; };
     std::vector<ProgramChange> programChanges;
@@ -719,8 +765,9 @@ int main (int argc, char* argv[])
             {
                 const double f = a.t1 > a.t0 ? std::clamp ((t - a.t0) / (a.t1 - a.t0), 0.0, 1.0) : 1.0;
                 if (a.t1 > a.t0 || (a.t0 >= t && a.t0 < t + (double) n / sr))
-                    for (auto& in : fx)
-                        setParam (*in.proc, in.fx, a.id + "=" + juce::String (a.a + (a.b - a.a) * (float) f));
+                    for (size_t j = 0; j < fx.size(); ++j)
+                        if (a.instance < 0 || a.instance == (int) j)
+                            setParam (*fx[j].proc, fx[j].fx, a.id + "=" + juce::String (a.a + (a.b - a.a) * (float) f));
             }
         juce::MidiBuffer midi;
         for (const auto& e : midiEvents)
@@ -770,8 +817,13 @@ int main (int argc, char* argv[])
             return 1;
         }
         if (instances > 1)
+        {
             std::cout << "instance_" << k << "_peers=" << fx[k].fx->meters.peers.load() << " instance_" << k << "_callsign="
-                      << fx[k].fx->getCallsign() << std::endl;
+                      << fx[k].fx->getCallsign() << " instance_" << k << "_faults=" << fx[k].fx->meters.faults.load();
+            for (int c = 0; c < (int) fx[k].fx->meters.custom.size(); ++c)
+                std::cout << " instance_" << k << "_custom" << c << "=" << fx[k].fx->meters.custom[(size_t) c].load();
+            std::cout << std::endl;
+        }
     }
 
     if (nullCheck)
